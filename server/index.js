@@ -92,5 +92,5 @@ app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html'))
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
 const port=Number(process.env.PORT||3000);
 const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
-await pool.query(schema);
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
 app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
