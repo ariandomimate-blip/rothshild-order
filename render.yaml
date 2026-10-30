@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: rothshild-order-of-light
+    runtime: node
+    region: frankfurt
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: APP_ORIGIN
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rothshild-order-of-light-db
+          property: connectionString
+
+databases:
+  - name: rothshild-order-of-light-db
+    region: frankfurt
+    databaseName: rothshild
+    user: rothshild_app

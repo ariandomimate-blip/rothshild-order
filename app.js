@@ -1,0 +1,21 @@
+const $=s=>document.querySelector(s);
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('#install').hidden=false});
+$('#install').addEventListener('click',async()=>{if(deferredPrompt){deferredPrompt.prompt();deferredPrompt=null;}});
+$('#menu').onclick=()=>$('#nav').classList.toggle('open');
+async function api(url,opts={}){const r=await fetch('/api'+url,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||'Anfrage fehlgeschlagen');return d}
+$('#register').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{let d=await api('/auth/register',{method:'POST',body:JSON.stringify({displayName:f.get('displayName'),email:f.get('email'),password:f.get('password')})});$('#regMsg').textContent=d.message;}catch(x){$('#regMsg').textContent=x.message}};
+$('#login').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{let d=await api('/auth/login',{method:'POST',body:JSON.stringify({email:f.get('email'),password:f.get('password')})});$('#authMsg').textContent=`Angemeldet: ${d.user.displayName} · Status: ${d.user.status} · Rolle: ${d.user.role}`;await loadMe();}catch(x){$('#authMsg').textContent=x.message}};
+$('#logout').onclick=async()=>{try{await api('/auth/logout',{method:'POST'});$('#authMsg').textContent='Abgemeldet';$('#me').textContent='Noch kein Profil geladen.'}catch(x){$('#authMsg').textContent=x.message}};
+async function loadMe(){try{let d=await api('/me');$('#me').textContent=`${d.user.displayName} · ${d.user.email} · ${d.user.role} · ${d.user.status}`;let a=await api('/mentor-assignments');$('#assignments').innerHTML=a.map(x=>`<p>${x.mentor_name} ↔ ${x.member_name}: ${x.status}</p>`).join('')||'Keine Mentorenzuordnung.';let l=await api('/library');$('#library').innerHTML=l.map(x=>`<article class="post"><b>${esc(x.title)}</b><p>${esc(x.summary)}</p><small>${esc(x.topic)} · ${esc(x.source_note||'')}</small></article>`).join('')||'Noch keine Bibliothekseinträge.';}catch{}}
+$('#loadPosts').onclick=loadPosts;
+async function loadPosts(){try{let d=await api('/forum/posts?category='+encodeURIComponent($('#category').value));$('#posts').innerHTML=d.map(p=>`<div class="post"><b>${esc(p.title)}</b><p>${esc(p.body)}</p><small>${esc(p.display_name)} · ${new Date(p.created_at).toLocaleString('de-DE')}</small></div>`).join('')||'Noch keine Beiträge.';}catch(e){$('#posts').textContent=e.message}}
+$('#newPost').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{await api('/forum/posts',{method:'POST',body:JSON.stringify({title:f.get('title'),body:f.get('body'),category:$('#category').value})});$('#postMsg').textContent='Beitrag veröffentlicht.';e.target.reset();await loadPosts();}catch(x){$('#postMsg').textContent=x.message}};
+$('#loadUsers').onclick=async()=>{try{let d=await api('/admin/users');$('#users').innerHTML=d.map(u=>`<div class="user"><b>${esc(u.display_name)}</b> · ${esc(u.email)} · ${esc(u.role)} · ${esc(u.status)}<br><small>${u.id}</small><br><button class="outline" data-approve="${u.id}">Freigeben</button> <button class="outline" data-reject="${u.id}">Ablehnen</button> <button class="outline" data-mentor="${u.id}">Als Mentor setzen</button></div>`).join('');
+$('#users').querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>changeUser(b.dataset.approve,{status:'approved'}));
+$('#users').querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>changeUser(b.dataset.reject,{status:'rejected'}));
+$('#users').querySelectorAll('[data-mentor]').forEach(b=>b.onclick=()=>changeUser(b.dataset.mentor,{status:'approved',role:'mentor'}));}catch(e){$('#users').textContent=e.message}};
+async function changeUser(id,body){try{await api('/admin/users/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(body)});await $('#loadUsers').click();}catch(e){$('#users').prepend(document.createTextNode(e.message));}}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+loadMe();
