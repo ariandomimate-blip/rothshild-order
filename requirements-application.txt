@@ -1,0 +1,1 @@
+Flask>=3.1,<4.0\nFlask-WTF>=1.2,<2.0\nFlask-Limiter>=3.8,<5.0\npython-dotenv>=1.0,<2.0\ngunicorn>=23.0,<24.0\n
