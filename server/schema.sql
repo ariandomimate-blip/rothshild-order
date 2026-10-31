@@ -71,3 +71,14 @@ INSERT INTO forum_categories(slug,title,access_level) VALUES
  ('symbols','Symbolik & Kunst','member'),
  ('projects','Gemeinsame Projekte','member')
 ON CONFLICT (slug) DO NOTHING;
+
+-- Minimal security audit trail: record administrative changes without logging passwords, tokens, or message contents.
+CREATE TABLE IF NOT EXISTS security_audit_log (
+ id BIGSERIAL PRIMARY KEY,
+ actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+ action TEXT NOT NULL,
+ target_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+ details JSONB NOT NULL DEFAULT '{}'::jsonb,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS security_audit_log_created_at_idx ON security_audit_log(created_at DESC);
