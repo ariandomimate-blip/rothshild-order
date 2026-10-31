@@ -16,8 +16,22 @@ const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:true}:false});
 const prod=process.env.NODE_ENV==='production';
 if(!process.env.JWT_SECRET || process.env.JWT_SECRET.length<32) {
+  if(prod) throw new Error('Production startup blocked: JWT_SECRET must be a unique random secret of at least 32 characters.');
   console.warn('WARN: Set a unique JWT_SECRET of at least 32 characters before deployment.');
 }
+if(prod && !process.env.APP_ORIGIN) throw new Error('Production startup blocked: APP_ORIGIN must be set to the exact HTTPS origin.');
+if(prod && !process.env.APP_ORIGIN.startsWith('https://')) throw new Error('Production startup blocked: APP_ORIGIN must use HTTPS.');
+// Render terminates TLS at its edge; trust only its immediate proxy for secure-cookie/request metadata.
+app.set('trust proxy',1);
+// Protect cookie-authenticated state changes against cross-site request forgery.
+// In production, browser writes must originate from the exact configured site origin.
+app.use((req,res,next)=>{
+  if(!['POST','PUT','PATCH','DELETE'].includes(req.method)) return next();
+  const origin=req.get('origin');
+  if(prod && (!origin || origin!==process.env.APP_ORIGIN)) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
+  if(origin && process.env.APP_ORIGIN && origin!==process.env.APP_ORIGIN) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
+  next();
+});
 app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"script-src":["'self'"],"style-src":["'self'"],"img-src":["'self'","data:"],"connect-src":["'self'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
 app.use(cors({origin:process.env.APP_ORIGIN,credentials:true}));
 app.use(express.json({limit:'30kb'})); app.use(cookieParser());
