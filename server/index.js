@@ -81,7 +81,7 @@ app.patch('/api/admin/users/:id',auth,roles('admin'),async(req,res)=>{
  const role=['applicant','member','mentor','moderator','admin'].includes(req.body.role)?req.body.role:null;
  if(!status&&!role)return res.status(400).json({error:'Keine gültige Änderung'});
  const r=await q('UPDATE users SET status=COALESCE($1,status),role=COALESCE($2,role) WHERE id=$3 RETURNING id,email,display_name,role,status',[status,role,req.params.id]);
- if(!r.rowCount)return res.status(404).json({error:'Mitglied nicht gefunden'});res.json(r.rows[0]);
+ if(!r.rowCount)return res.status(404).json({error:'Mitglied nicht gefunden'});await q('INSERT INTO security_audit_log(actor_user_id,action,target_user_id,details) VALUES($1,$2,$3,$4::jsonb)',[req.user.id,'admin.user.updated',r.rows[0].id,JSON.stringify({status:status||undefined,role:role||undefined})]);res.json(r.rows[0]);
 });
 app.post('/api/admin/mentor-assignments',auth,roles('admin'),async(req,res)=>{
  const member=clean(req.body.memberId,60),mentor=clean(req.body.mentorId,60);
