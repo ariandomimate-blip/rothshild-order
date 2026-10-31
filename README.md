@@ -7,7 +7,7 @@ Responsive website + installable Progressive Web App (PWA) starter, with:
 - Separate onboarding and approved-member forum categories
 - Forum post API with server-side access checks
 - Admin member list and approval/role endpoint
-- Admin mentor assignment endpoint; chat only after both parties accept
+- Admin mentor assignment endpoint; private messaging is currently disabled pending vetted end-to-end encryption
 - Knowledge library API
 - PostgreSQL schema
 - PWA manifest and service worker
@@ -30,8 +30,10 @@ Never expose database credentials.
 ## Production security — mandatory before real member data
 This is a deployable starter, not a completed security certification:
 - Deploy only behind HTTPS; set `NODE_ENV=production`, `COOKIE_SECURE=true`, a unique random `JWT_SECRET`, strict `APP_ORIGIN`, and PostgreSQL TLS.
-- Add verified-email flow, MFA/passkeys, password reset, account recovery, CSRF protection for cookie-authenticated state-changing routes, audit trails, backup/restore tests, monitoring, abuse reporting and retention/deletion workflows.
+- Email verification, MFA/passkeys, password reset, and secure account recovery are not implemented yet. Do not enable real member accounts until these flows are integrated with a verified email provider and tested.
+- A minimal admin account-change audit log is now present. Add retention controls, alerting, and broader event coverage before production use.
+- Configure automated encrypted PostgreSQL backups and perform restore drills; verify monitoring, abuse reporting, and retention/deletion workflows.
 - Review rate limits, input validation, authorization tests, dependency scanning, penetration testing and privacy/legal requirements.
-- Current chat API stores ciphertext only, but **does not implement end-to-end encryption or key exchange**. Do not use it for confidential messages until a vetted E2EE protocol (for example, a reviewed Signal-protocol implementation) and device/key verification are integrated and independently audited.
+- Private chat API endpoints now fail closed with HTTP 503. There is no deployed end-to-end encryption or key verification. Do not advertise private messaging as available until a vetted E2EE protocol, device/key verification, and independent audit are completed.
 - PWA shell may work offline; private data and API responses are not cached.
 - No official relationship with the Rothschild family or any historical organization is claimed. Historical content should be sourced and reviewed.
