@@ -35,7 +35,9 @@ app.use((req,res,next)=>{
 app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"script-src":["'self'"],"style-src":["'self'"],"img-src":["'self'","data:"],"connect-src":["'self'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
 app.use(cors({origin:process.env.APP_ORIGIN,credentials:true}));
 app.use(express.json({limit:'30kb'})); app.use(cookieParser());
-app.use('/api/auth',rateLimit({windowMs:15*60*1000,limit:12,standardHeaders:true,legacyHeaders:false}));
+app.use('/api/auth',rateLimit({windowMs:15*60*1000,limit:8,standardHeaders:true,legacyHeaders:false,message:{error:'Too many authentication attempts. Please wait and try again.'}}));
+app.use('/api/admin',rateLimit({windowMs:60*1000,limit:30,standardHeaders:true,legacyHeaders:false}));
+app.use('/api/conversations',rateLimit({windowMs:60*1000,limit:40,standardHeaders:true,legacyHeaders:false}));
 const q=(s,v=[])=>pool.query(s,v);
 const cookieOpts={httpOnly:true,secure:prod || process.env.COOKIE_SECURE==='true',sameSite:'strict',path:'/'};
 function tokenFor(u){return jwt.sign({sub:u.id,role:u.role,status:u.status},process.env.JWT_SECRET,{expiresIn:'2h',issuer:'rothshild-platform'});}
@@ -92,15 +94,10 @@ app.post('/api/mentor-assignments/:id/respond',auth,async(req,res)=>{
  if(!r.rowCount)return res.status(404).json({error:'Einladung nicht gefunden'});res.json({status:r.rows[0].status});
 });
 app.get('/api/mentor-assignments',auth,async(req,res)=>{const r=await q('SELECT a.*,m.display_name AS member_name,t.display_name AS mentor_name FROM mentor_assignments a JOIN users m ON m.id=a.member_id JOIN users t ON t.id=a.mentor_id WHERE a.member_id=$1 OR a.mentor_id=$1 ORDER BY a.created_at DESC',[req.user.id]);res.json(r.rows);});
-app.get('/api/conversations/:id/messages',auth,async(req,res)=>{
- const ok=await q('SELECT 1 FROM conversation_members WHERE conversation_id=$1 AND user_id=$2',[req.params.id,req.user.id]);if(!ok.rowCount)return res.status(403).json({error:'Kein Zugriff'});
- const r=await q('SELECT id,sender_id,ciphertext,created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC LIMIT 200',[req.params.id]);res.json(r.rows);
-});
-app.post('/api/conversations/:id/messages',auth,async(req,res)=>{
- const ok=await q('SELECT 1 FROM conversation_members WHERE conversation_id=$1 AND user_id=$2',[req.params.id,req.user.id]);if(!ok.rowCount)return res.status(403).json({error:'Kein Zugriff'});
- const ciphertext=clean(req.body.ciphertext,12000);if(ciphertext.length<1)return res.status(400).json({error:'Nachricht fehlt'});
- const r=await q('INSERT INTO messages(conversation_id,sender_id,ciphertext) VALUES($1,$2,$3) RETURNING id,created_at',[req.params.id,req.user.id,ciphertext]);res.status(201).json(r.rows[0]);
-});
+// Fail closed: end-to-end encryption and key verification are not yet implemented or audited.
+// Do not accept or return message payloads that could be plaintext mislabeled as ciphertext.
+app.get('/api/conversations/:id/messages',auth,(req,res)=>res.status(503).json({error:'Private messaging is disabled until end-to-end encryption and key verification are implemented and independently reviewed.'}));
+app.post('/api/conversations/:id/messages',auth,(req,res)=>res.status(503).json({error:'Private messaging is disabled until end-to-end encryption and key verification are implemented and independently reviewed.'}));
 app.use(express.static(path.join(__dirname,'../public')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
