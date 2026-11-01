@@ -82,3 +82,9 @@ CREATE TABLE IF NOT EXISTS security_audit_log (
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS security_audit_log_created_at_idx ON security_audit_log(created_at DESC);
+
+-- Persisted member profile fields for existing databases.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_rank TEXT DEFAULT 'Kein Rang angegeben';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_title TEXT DEFAULT 'Kein Titel angegeben';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cover_data TEXT;
