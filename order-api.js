@@ -9,10 +9,7 @@ import crypto from 'node:crypto';
 const app=express();
 const {Pool}=pg;
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false}):null;
-const origin=process.env.APP_ORIGIN;
-if(!origin) throw new Error('APP_ORIGIN must be configured.');
-if(!process.env.TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is missing.');
-if(!process.env.TELEGRAM_ADMIN_CHAT_ID) throw new Error('TELEGRAM_ADMIN_CHAT_ID is missing.');
+const origin=process.env.APP_ORIGIN||'https://the-house-of-rothschild-illuminati.onrender.com';
 app.set('trust proxy',1);
 app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'none'"],"connect-src":["'self'"],"img-src":["'self'","data:"],"style-src":["'self'","'unsafe-inline'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
 app.use(cors({origin,methods:['GET','POST'],allowedHeaders:['Content-Type','X-Telegram-Bot-Api-Secret-Token']}));
@@ -38,6 +35,7 @@ const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
 )`;
 async function init(){if(pool)await pool.query(orderTable);}
 async function tg(method,payload){
+ if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('TELEGRAM_BOT_TOKEN is not configured in the backend environment.');
  const r=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
  const data=await r.json().catch(()=>({}));
  if(!r.ok||data.ok!==true)throw new Error(data.description||'Telegram API failed');
@@ -47,7 +45,7 @@ const productKeyboard=()=>({inline_keyboard:[...catalog.map(p=>[{text:p.name+' �
 function cartKeyboard(cart){const rows=catalog.filter(p=>cart[p.id]).map(p=>[{text:'− '+p.name,callback_data:'dec:'+p.id},{text:String(cart[p.id])+'×',callback_data:'noop'},{text:'+ '+p.name,callback_data:'add:'+p.id}]);rows.push([{text:'Zur Kasse',callback_data:'checkout'}],[{text:'Produkte',callback_data:'menu'}]);return {inline_keyboard:rows};}
 function cartRows(cart){return catalog.filter(p=>cart[p.id]).map(p=>({...p,quantity:cart[p.id],lineTotal:p.price*cart[p.id]}));}
 function cartText(cart){const rows=cartRows(cart);if(!rows.length)return 'Der Warenkorb ist leer. Wähle Produkte:';return '🛒 Warenkorb\n'+rows.map(p=>p.name+' × '+p.quantity+' — '+money(p.lineTotal)).join('\n')+'\n\nGesamt: '+money(rows.reduce((a,p)=>a+p.lineTotal,0));}
-async function saveOrder(order){if(!pool)throw new Error('DATABASE_URL muss gesetzt sein, damit Bestellungen dauerhaft gespeichert werden.');await pool.query('INSERT INTO shop_orders(order_number,customer_name,customer_email,telegram_chat_id,items,total,status) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)',[order.id,order.name,order.email||null,order.chatId||null,JSON.stringify(order.items),order.total,order.status||'awaiting_txid']);}
+async function saveOrder(order){if(!pool)throw new Error('DATABASE_URL muss im Backend gesetzt sein, damit Bestellungen dauerhaft gespeichert werden.');await pool.query('INSERT INTO shop_orders(order_number,customer_name,customer_email,telegram_chat_id,items,total,status) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)',[order.id,order.name,order.email||null,order.chatId||null,JSON.stringify(order.items),order.total,order.status||'awaiting_txid']);}
 async function getOrder(id){if(!pool)return null;const r=await pool.query('SELECT * FROM shop_orders WHERE order_number=$1',[id]);return r.rows[0]||null;}
 async function adminOrder(order){const lines=order.items.map(i=>i.name+' × '+i.quantity+' — '+money(i.lineTotal)).join('\n');return tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'🛍 Neue Bestellung\n'+order.id+'\nKunde: '+order.name+'\nE-Mail: '+(order.email||'nicht angegeben')+'\n\n'+lines+'\n\nGesamt: '+money(order.total)+'\nStatus: TXID/Zahlung offen.',reply_markup:{inline_keyboard:[[{text:'TXID prüfen / Zahlung bestätigen',callback_data:'review:'+order.id}]]}});}
 app.get('/api/health',(req,res)=>res.json({ok:true,storage:pool?'postgres':'unavailable'}));
