@@ -94,7 +94,7 @@ document.querySelector('#cart-telegram').addEventListener('click',async()=>{
  const id=orderNumber(),status=document.querySelector('#cart-status'),button=document.querySelector('#cart-telegram');
  button.disabled=true;status.textContent='Übermittle Bestellnummer '+id+' an Telegram …';
  try{
-  const response=await fetch('/api/shop/orders',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:id,customerName:c.name,customerEmail:c.email,items:items().map(item=>({name:item.name,quantity:item.quantity}))})});
+  const response=await fetch('https://rothshild-order-api.onrender.com/api/shop/orders',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:id,customerName:c.name,customerEmail:c.email,items:items().map(item=>({name:item.name,quantity:item.quantity}))})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.error||'Telegram-Übermittlung fehlgeschlagen.');
   status.textContent='Bestellung '+data.orderNumber+' wurde an Telegram übermittelt. Warenwert: '+money(data.total)+'. Noch keine Zahlungsbestätigung.';
