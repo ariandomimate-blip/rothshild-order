@@ -23,6 +23,15 @@ Die Website sendet Bestellnummer, Warenkorb und Kundendaten serverseitig an dies
 
 Nach Bereitstellung zuerst die Render-URL testen. Danach `APP_ORIGIN` exakt auf die öffentliche Origin setzen, z. B. `https://DEIN-SERVICE.onrender.com` (ohne abschließenden Slash), speichern und neu deployen.
 
+
+### Shop-Bestellungen (separater Node-Backend-Service)
+Der öffentliche Shop ist ein Static Site. Für Telegram-Bestellungen wurde der zusätzliche Render-Web-Service `rothshild-order-api` mit Startbefehl `node order-api.js` eingerichtet. Im Backend-Service unter **Environment** ergänzen:
+- `TELEGRAM_BOT_TOKEN`: BotFather-Token als Secret.
+- `TELEGRAM_ADMIN_CHAT_ID`: Telegram-Chat-ID, an die der Bot die Bestellnachrichten senden soll.
+- `APP_ORIGIN`: bereits auf `https://the-house-of-rothschild-illuminati.onrender.com` gesetzt; nur ändern, wenn sich die Shop-Origin ändert.
+
+Token und Chat-ID nicht in den Quellcode, in die Shop-Seite oder in öffentliche GitHub-Dateien schreiben. Öffne den Bot als Administrator in Telegram und sende `/start`, bevor du Bestellmeldungen testest. Der Warenkorb hat separate Aktionen für einen vorausgefüllten E-Mail-Entwurf und für die serverseitige Telegram-Übermittlung. Nach dem Einfügen der beiden Telegram-Variablen wird der Backend-Service automatisch neu gestartet.
+
 ## Datenbankschema anwenden
 Das Schema aus `server/schema.sql` muss einmal auf der Render-Datenbank ausgeführt werden:
 1. Render → PostgreSQL → Connect → External/PSQL URL bzw. Dashboard Query Tool.
