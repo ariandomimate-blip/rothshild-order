@@ -97,7 +97,22 @@ document.querySelector('#cart-telegram').addEventListener('click',async()=>{
   const response=await fetch('https://rothshild-order-api.onrender.com/api/shop/orders',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:id,customerName:c.name,customerEmail:c.email,items:items().map(item=>({name:item.name,quantity:item.quantity}))})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.error||'Telegram-Übermittlung fehlgeschlagen.');
-  status.textContent='Bestellung '+data.orderNumber+' wurde an Telegram übermittelt. Warenwert: '+money(data.total)+'. Noch keine Zahlungsbestätigung.';
+  status.textContent='Bestellung '+data.orderNumber+' wurde an Telegram übermittelt. Warenwert: '+money(data.total)+'. Zahlung noch offen.';
+  const txidBox=document.createElement('div');
+  txidBox.className='txid-entry';
+  txidBox.innerHTML='<label>Transaktions-ID (TXID)<input id="shop-txid" maxlength="300" required placeholder="TXID nach der Zahlungsanweisung"></label><button class="gold" type="button" id="submit-shop-txid">TXID übermitteln</button><p class="muted">Die Zahlung gilt erst nach Prüfung durch die Administration als bestätigt.</p>';
+  status.appendChild(txidBox);
+  document.querySelector('#submit-shop-txid').addEventListener('click',async()=>{
+   const txid=document.querySelector('#shop-txid').value.trim(),txButton=document.querySelector('#submit-shop-txid');
+   if(txid.length<8){status.insertAdjacentText('beforeend',' Bitte eine vollständige TXID eingeben.');return;}
+   txButton.disabled=true;
+   try{
+    const txResponse=await fetch('https://rothshild-order-api.onrender.com/api/shop/txid/'+encodeURIComponent(data.orderNumber),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({txid})});
+    const txData=await txResponse.json().catch(()=>({}));
+    if(!txResponse.ok)throw new Error(txData.error||'TXID konnte nicht übermittelt werden.');
+    txidBox.innerHTML='<p>TXID wurde zur Prüfung an die Administration gesendet. Zahlung noch nicht bestätigt.</p>';
+   }catch(e){status.insertAdjacentText('beforeend',' '+e.message);txButton.disabled=false;}
+  });
  }catch(error){status.textContent=error.message;}
  finally{button.disabled=false;}
 });
