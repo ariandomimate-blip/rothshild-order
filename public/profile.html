@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090807"><title>Mein Profil · ROTHSHILD Order of Light</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+.profile-wrap{max-width:850px;margin:3rem auto;padding:0 1rem}.profile-card{border:1px solid #765b31;background:#100d09;padding:clamp(1rem,4vw,2rem);color:#eadfc9}
+.cover{height:180px;background:#20170d center/cover;border:1px solid #6d512b;display:flex;align-items:end;padding:1rem}.avatar{width:94px;height:94px;border-radius:50%;border:3px solid #c8a45d;background:#21170c center/cover;transform:translateY(42px)}.form{margin-top:58px;display:grid;gap:1rem}.form label{display:grid;gap:.4rem;color:#d9c7a4}.form input,.form textarea{width:100%;padding:.8rem;background:#080706;color:#f8edda;border:1px solid #6d512b;font:inherit}.form textarea{min-height:110px}.form button{padding:.9rem 1.2rem;background:#b9934e;color:#100b05;border:0;font-weight:bold}.status{min-height:1.5rem;color:#d7bd7d}
+</style></head>
+<body>
+<header><a class="brand" href="/">♜ ROTHSHILD<small>ILLUMINATI · ORDER OF LIGHT</small></a><nav><a href="/">Home</a><a href="/community.html">Community</a><a href="/#forum">Forum</a></nav></header>
+<main class="profile-wrap"><div class="eyebrow">MEMBER SPACE</div><h1>Mein Profil</h1><p>Bearbeite dein Profilbild, Titelbild, deine Beschreibung und deinen angezeigten Rang und Titel.</p>
+<section class="profile-card">
+<div class="cover" id="coverPreview"><div class="avatar" id="avatarPreview"></div></div>
+<form class="form" id="profileForm">
+<label>Anzeigename<input id="displayName" maxlength="70" required></label>
+<label>Beschreibung<textarea id="bio" maxlength="1200" placeholder="Ein paar Worte über dich …"></textarea></label>
+<label>Rang<input id="rank" maxlength="100" placeholder="Mitgliederrang"></label>
+<label>Titel<input id="title" maxlength="100" placeholder="Profil-Titel"></label>
+<label>Profilbild (PNG/JPEG/WebP/GIF)<input id="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+<label>Titelbild (PNG/JPEG/WebP/GIF)<input id="coverFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+<button type="submit">Profil speichern</button><p class="status" id="status" role="status"></p>
+</form></section></main>
+<script>
+const $=id=>document.getElementById(id);let avatarData='',coverData='';
+function fileData(file){return new Promise((resolve,reject)=>{if(!file){resolve('');return}if(file.size>900000){reject(Error('Bitte ein Bild unter 900 KB wählen.'));return}const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('Bild konnte nicht gelesen werden.'));r.readAsDataURL(file)})}
+async function load(){try{const r=await fetch('/api/profile',{credentials:'same-origin'});if(!r.ok)throw Error(r.status===401?'Bitte zuerst anmelden.':'Profil konnte nicht geladen werden.');const d=(await r.json()).profile;$('displayName').value=d.display_name||'';$('bio').value=d.bio||'';$('rank').value=d.rank||'';$('title').value=d.title||'';avatarData=d.avatar_data||'';coverData=d.cover_data||'';paint()}catch(e){$('status').textContent=e.message}}
+function paint(){if(avatarData)$('avatarPreview').style.backgroundImage='url('+avatarData+')';if(coverData)$('coverPreview').style.backgroundImage='url('+coverData+')'}
+$('avatarFile').addEventListener('change',async e=>{try{avatarData=await fileData(e.target.files[0]);paint()}catch(err){$('status').textContent=err.message}});
+$('coverFile').addEventListener('change',async e=>{try{coverData=await fileData(e.target.files[0]);paint()}catch(err){$('status').textContent=err.message}});
+$('profileForm').addEventListener('submit',async e=>{e.preventDefault();$('status').textContent='Speichere …';try{const r=await fetch('/api/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({displayName:$('displayName').value,bio:$('bio').value,rank:$('rank').value,title:$('title').value,avatarData,coverData})});const d=await r.json();if(!r.ok)throw Error(d.error||'Speichern fehlgeschlagen');$('status').textContent='Profil gespeichert.'}catch(err){$('status').textContent=err.message}});
+load();
+</script></body></html>
