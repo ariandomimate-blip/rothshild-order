@@ -117,6 +117,13 @@ app.get('/api/mentor-assignments',auth,async(req,res)=>{const r=await q('SELECT 
 app.get('/api/conversations/:id/messages',auth,(req,res)=>res.status(503).json({error:'Private messaging is disabled until end-to-end encryption and key verification are implemented and independently reviewed.'}));
 app.post('/api/conversations/:id/messages',auth,(req,res)=>res.status(503).json({error:'Private messaging is disabled until end-to-end encryption and key verification are implemented and independently reviewed.'}));
 
+// Public directory: only explicitly approved accounts are visible; never expose emails or password data.
+app.get('/api/profiles',async(req,res)=>{
+ try{
+  const r=await q("SELECT id,display_name,bio,profile_rank,profile_title,avatar_data,cover_data FROM users WHERE status='approved' ORDER BY created_at DESC LIMIT 100");
+  res.json({profiles:r.rows.map(p=>({...p,rank:p.profile_rank,title:p.profile_title}))});
+ }catch(e){console.error('Public profile listing failed:',e.message);res.status(500).json({error:'Profile konnten nicht geladen werden.'});}
+});
 app.get('/api/profile',auth,async(req,res)=>{const r=await q('SELECT display_name,bio,profile_rank,profile_title,avatar_data,cover_data FROM users WHERE id=$1',[req.user.id]);if(!r.rowCount)return res.status(404).json({error:'Profil nicht gefunden'});const p=r.rows[0];res.json({profile:{...p,rank:p.profile_rank,title:p.profile_title}});});
 app.patch('/api/profile',auth,async(req,res)=>{const name=clean(req.body.displayName,70),bio=clean(req.body.bio,1200),rank=clean(req.body.rank,100),title=clean(req.body.title,100),avatar=String(req.body.avatarData||''),cover=String(req.body.coverData||'');const validImage=v=>!v||(v.length<1250000&&/^data:image\/(png|jpeg|webp|gif);base64,/.test(v));if(name.length<2||!validImage(avatar)||!validImage(cover))return res.status(400).json({error:'Name oder Bildformat/-größe ungültig'});await q('UPDATE users SET display_name=$1,bio=$2,profile_rank=$3,profile_title=$4,avatar_data=$5,cover_data=$6 WHERE id=$7',[name,bio,rank,title,avatar||null,cover||null,req.user.id]);res.json({ok:true});});
 app.post('/api/mentor/ai-chat',auth,async(req,res)=>{const message=clean(req.body.message,4000);if(!message)return res.status(400).json({error:'Nachricht fehlt'});if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'KI-Mentor noch nicht aktiviert: OPENAI_API_KEY in Render setzen.'});try{const response=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-4o-mini',messages:[{role:'system',content:'Du bist ein KI-Mentor mit ruhigem, erleuchtetem, spirituell-mystischem und philosophischem Charakter. Antworte warm, respektvoll und kritisch denkend. Unterscheide belegte Geschichte von Legenden und Spekulationen. Behaupte keine geheimen Mächte oder gesicherte Mitgliedschaft. Du bist eine KI, kein menschlicher Mentor oder Therapeut.'},{role:'user',content:message}],temperature:0.7})});const data=await response.json();if(!response.ok)throw Error(data.error?.message||'KI-Anfrage fehlgeschlagen');res.json({reply:data.choices?.[0]?.message?.content||'Ich kann darauf gerade nicht antworten.'})}catch(e){res.status(502).json({error:'KI-Mentor derzeit nicht erreichbar.'});}});
@@ -158,6 +165,13 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
    ...items.map(item=>item.name+' × '+item.quantity+' — 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+// Provision the requested administrator account only if that email already registered.
+if(process.env.DATABASE_URL){
+ const adminEmail='gaussa72@gmail.com';
+ const admin=await pool.query("UPDATE users SET role='admin',status='approved' WHERE lower(email)=lower($1) RETURNING id",[adminEmail]);
+ if(admin.rowCount) console.log('Administrator role enabled for configured account.');
+ else console.warn('Requested admin email has not registered yet; no account created.');
+}
 const port=Number(process.env.PORT||3000);
 const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
 if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
