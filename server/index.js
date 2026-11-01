@@ -48,6 +48,14 @@ const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user.role)?next()
 const approved=(req,res,next)=>req.user.status==='approved'?next():res.status(403).json({error:'Mitgliedschaft noch nicht freigeschaltet'});
 const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
 app.get('/api/health',(req,res)=>res.json({ok:true}));
+app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
+ const v=req.body||{};if(clean(v.website,200))return res.status(400).json({error:'Ungültige Anfrage'});
+ const fullName=clean(v.fullName,100),email=clean(v.email,254).toLowerCase(),motivation=clean(v.motivation,3000);
+ if(fullName.length<2||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||motivation.length<10||v.adult!==true||v.consent!==true)return res.status(400).json({error:'Bitte Pflichtangaben prüfen und Volljährigkeit sowie Einwilligung bestätigen.'});
+ if(!process.env.SMTP_HOST||!process.env.SMTP_USER||!process.env.SMTP_PASS||!process.env.SMTP_FROM)return res.status(503).json({error:'E-Mail-Versand ist noch nicht konfiguriert.'});
+ try{const nodemailer=(await import('nodemailer')).default;const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});const text=['Bewerbung – THE HOUSE OF ROTHSCHILD ILLUMINATI','',`Name: ${fullName}`,`E-Mail: ${email}`,`Nationalität: ${clean(v.nationality,80)||'—'}`,`Wohnort/Region: ${clean(v.region,120)||'—'}`,`Telefon: ${clean(v.phone,40)||'—'}`,`Beruf/Tätigkeit: ${clean(v.occupation,120)||'—'}`,'','Motivation:',motivation,'','Volljährigkeit und Einwilligung zur Übermittlung wurden im Formular bestätigt.'].join('\\n');await transporter.sendMail({from:process.env.SMTP_FROM,to:'adiphenex@gmail.com',cc:'rothschildofficial938@gmail.com',replyTo:email,subject:'Neue Bewerbung – THE HOUSE OF ROTHSCHILD ILLUMINATI',text});res.status(201).json({ok:true});}catch(e){console.error('Application mail failed:',e.message);res.status(500).json({error:'E-Mail konnte derzeit nicht versendet werden.'});}
+});
+
 app.post('/api/auth/register',async(req,res)=>{
  const email=clean(req.body.email,254).toLowerCase(), name=clean(req.body.displayName,70), password=String(req.body.password||'');
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||name.length<2||password.length<12)return res.status(400).json({error:'Bitte gültige E-Mail, Anzeigename und Passwort mit mindestens 12 Zeichen angeben.'});
