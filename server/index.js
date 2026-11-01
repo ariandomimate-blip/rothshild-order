@@ -136,7 +136,7 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   const customerEmail=clean(req.body?.customerEmail,254).toLowerCase();
   const orderNumber=clean(req.body?.orderNumber,40);
   const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(customerName.length<2||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
+  if(customerName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
    return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
   }
   const items=[];
