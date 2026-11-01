@@ -47,6 +47,8 @@ async function auth(req,res,next){
 const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user.role)?next():res.status(403).json({error:'Keine Berechtigung'});
 const approved=(req,res,next)=>req.user.status==='approved'?next():res.status(403).json({error:'Mitgliedschaft noch nicht freigeschaltet'});
 const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
+async function notifyAdmins(subject,text,replyTo){if(!process.env.SMTP_HOST||!process.env.SMTP_USER||!process.env.SMTP_PASS||!process.env.SMTP_FROM)throw new Error('SMTP nicht konfiguriert');const nodemailer=(await import('nodemailer')).default;const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});return transporter.sendMail({from:process.env.SMTP_FROM,to:'adiphenex@gmail.com',cc:'rothschildofficial938@gmail.com',replyTo,subject,text});}
+
 app.get('/api/health',(req,res)=>res.json({ok:true}));
 app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
  const v=req.body||{};if(clean(v.website,200))return res.status(400).json({error:'Ungültige Anfrage'});
@@ -80,7 +82,7 @@ app.post('/api/forum/posts',auth,async(req,res)=>{
  if(title.length<4||body.length<2)return res.status(400).json({error:'Titel und Text erforderlich'});
  const c=await q('SELECT id,access_level FROM forum_categories WHERE slug=$1',[slug]);if(!c.rowCount)return res.status(404).json({error:'Bereich nicht gefunden'});
  if(c.rows[0].access_level==='member'&&req.user.status!=='approved')return res.status(403).json({error:'Nur für freigeschaltete Mitglieder'});
- const r=await q('INSERT INTO forum_posts(category_id,author_id,title,body) VALUES($1,$2,$3,$4) RETURNING id',[c.rows[0].id,req.user.id,title,body]);res.status(201).json({id:r.rows[0].id});
+ const r=await q('INSERT INTO forum_posts(category_id,author_id,title,body) VALUES($1,$2,$3,$4) RETURNING id',[c.rows[0].id,req.user.id,title,body]);try{await notifyAdmins('Neuer Forumsbeitrag: '+title,`Mitglied: ${req.user.display_name} (${req.user.email})\nBereich: ${slug}\nTitel: ${title}\n\n${body}` ,req.user.email)}catch(e){console.error('Forum notification mail failed:',e.message)}res.status(201).json({id:r.rows[0].id,notificationSent:true});
 });
 app.get('/api/library',auth,async(req,res)=>{const r=await q("SELECT id,title,topic,summary,body,source_note,visibility FROM library_items WHERE visibility='public' OR $1='approved' ORDER BY created_at DESC",[req.user.status]);res.json(r.rows);});
 app.get('/api/admin/users',auth,roles('admin','moderator'),async(req,res)=>{const r=await q('SELECT id,email,display_name,role,status,created_at FROM users ORDER BY created_at DESC LIMIT 300');res.json(r.rows);});
@@ -101,6 +103,8 @@ app.post('/api/mentor-assignments/:id/respond',auth,async(req,res)=>{
  const accept=req.body.accept===true;const r=await q('UPDATE mentor_assignments SET status=$1 WHERE id=$2 AND (member_id=$3 OR mentor_id=$3) AND status=$4 RETURNING *',[accept?'accepted':'declined',req.params.id,req.user.id,'invited']);
  if(!r.rowCount)return res.status(404).json({error:'Einladung nicht gefunden'});res.json({status:r.rows[0].status});
 });
+
+app.post('/api/mentor/request',auth,rateLimit({windowMs:60*60*1000,limit:4}),async(req,res)=>{const topic=clean(req.body.topic,140),message=clean(req.body.message,2500);if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte Thema und Nachricht eingeben.'});try{await notifyAdmins('Mentorenanfrage von '+req.user.display_name, 'Mitglied: '+req.user.display_name+' ('+req.user.email+')\nThema: '+topic+'\n\nAnfrage:\n'+message,req.user.email);res.status(201).json({ok:true,message:'Mentorenanfrage an die Administration gesendet.'});}catch(e){res.status(503).json({error:'E-Mail-Versand derzeit nicht verfügbar.'});}});
 app.get('/api/mentor-assignments',auth,async(req,res)=>{const r=await q('SELECT a.*,m.display_name AS member_name,t.display_name AS mentor_name FROM mentor_assignments a JOIN users m ON m.id=a.member_id JOIN users t ON t.id=a.mentor_id WHERE a.member_id=$1 OR a.mentor_id=$1 ORDER BY a.created_at DESC',[req.user.id]);res.json(r.rows);});
 // Fail closed: end-to-end encryption and key verification are not yet implemented or audited.
 // Do not accept or return message payloads that could be plaintext mislabeled as ciphertext.
