@@ -87,10 +87,10 @@ app.post('/api/admin/mentor-assignments',auth,roles('admin'),async(req,res)=>{
  const member=clean(req.body.memberId,60),mentor=clean(req.body.mentorId,60);
  const m=await q("SELECT id FROM users WHERE id=$1 AND status='approved'",[member]),t=await q("SELECT id FROM users WHERE id=$1 AND role='mentor' AND status='approved'",[mentor]);
  if(!m.rowCount||!t.rowCount)return res.status(400).json({error:'Freigeschaltetes Mitglied und freigeschalteter Mentor erforderlich'});
- const r=await q('INSERT INTO mentor_assignments(member_id,mentor_id,assigned_by) VALUES($1,$2,$3) ON CONFLICT(member_id,mentor_id) DO UPDATE SET status=\\'invited\\' RETURNING id',[member,mentor,req.user.id]);res.status(201).json({assignmentId:r.rows[0].id,status:'invited'});
+ const r=await q('INSERT INTO mentor_assignments(member_id,mentor_id,assigned_by) VALUES($1,$2,$3) ON CONFLICT(member_id,mentor_id) DO UPDATE SET status=$4 RETURNING id',[member,mentor,req.user.id,'invited']);res.status(201).json({assignmentId:r.rows[0].id,status:'invited'});
 });
 app.post('/api/mentor-assignments/:id/respond',auth,async(req,res)=>{
- const accept=req.body.accept===true;const r=await q('UPDATE mentor_assignments SET status=$1 WHERE id=$2 AND (member_id=$3 OR mentor_id=$3) AND status=\\'invited\\' RETURNING *',[accept?'accepted':'declined',req.params.id,req.user.id]);
+ const accept=req.body.accept===true;const r=await q('UPDATE mentor_assignments SET status=$1 WHERE id=$2 AND (member_id=$3 OR mentor_id=$3) AND status=$4 RETURNING *',[accept?'accepted':'declined',req.params.id,req.user.id,'invited']);
  if(!r.rowCount)return res.status(404).json({error:'Einladung nicht gefunden'});res.json({status:r.rows[0].status});
 });
 app.get('/api/mentor-assignments',auth,async(req,res)=>{const r=await q('SELECT a.*,m.display_name AS member_name,t.display_name AS mentor_name FROM mentor_assignments a JOIN users m ON m.id=a.member_id JOIN users t ON t.id=a.mentor_id WHERE a.member_id=$1 OR a.mentor_id=$1 ORDER BY a.created_at DESC',[req.user.id]);res.json(r.rows);});
