@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import path from 'node:path';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -47,6 +48,11 @@ async function auth(req,res,next){
 const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user.role)?next():res.status(403).json({error:'Keine Berechtigung'});
 const approved=(req,res,next)=>req.user.status==='approved'?next():res.status(403).json({error:'Mitgliedschaft noch nicht freigeschaltet'});
 const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
+function messageKey(){const raw=process.env.MESSAGE_ENCRYPTION_KEY||'';const key=Buffer.from(raw,'base64');if(key.length!==32)throw new Error('MESSAGE_ENCRYPTION_KEY must be a base64-encoded 32-byte key');return key;}
+function encryptMessage(plain){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',messageKey(),iv);const data=Buffer.concat([cipher.update(plain,'utf8'),cipher.final()]);return JSON.stringify({v:1,iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:data.toString('base64')});}
+function decryptMessage(value){const box=JSON.parse(value);if(box.v!==1)throw new Error('Unsupported encrypted message');const decipher=createDecipheriv('aes-256-gcm',messageKey(),Buffer.from(box.iv,'base64'));decipher.setAuthTag(Buffer.from(box.tag,'base64'));return Buffer.concat([decipher.update(Buffer.from(box.data,'base64')),decipher.final()]).toString('utf8');}
+async function isConversationMember(id,userId){const r=await q('SELECT 1 FROM conversation_members WHERE conversation_id=$1 AND user_id=$2',[id,userId]);return r.rowCount>0;}
+
 async function notifyAdmins(subject,text,replyTo){if(!process.env.SMTP_HOST||!process.env.SMTP_USER||!process.env.SMTP_PASS||!process.env.SMTP_FROM)throw new Error('SMTP nicht konfiguriert');const nodemailer=(await import('nodemailer')).default;const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});return transporter.sendMail({from:process.env.SMTP_FROM,to:'adiphenex@gmail.com',cc:'rothschildofficial938@gmail.com',replyTo,subject,text});}
 
 app.get('/api/health',(req,res)=>res.json({ok:true}));
@@ -101,7 +107,7 @@ app.post('/api/admin/mentor-assignments',auth,roles('admin'),async(req,res)=>{
 });
 app.post('/api/mentor-assignments/:id/respond',auth,async(req,res)=>{
  const accept=req.body.accept===true;const r=await q('UPDATE mentor_assignments SET status=$1 WHERE id=$2 AND (member_id=$3 OR mentor_id=$3) AND status=$4 RETURNING *',[accept?'accepted':'declined',req.params.id,req.user.id,'invited']);
- if(!r.rowCount)return res.status(404).json({error:'Einladung nicht gefunden'});res.json({status:r.rows[0].status});
+ if(!r.rowCount)return res.status(404).json({error:'Einladung nicht gefunden'});if(accept){const a=r.rows[0];const c=await q('SELECT id FROM conversations WHERE assignment_id=$1 LIMIT 1',[a.id]);let conversationId=c.rows[0]?.id;if(!conversationId){const created=await q('INSERT INTO conversations(assignment_id) VALUES($1) RETURNING id',[a.id]);conversationId=created.rows[0].id;await q('INSERT INTO conversation_members(conversation_id,user_id) VALUES($1,$2),($1,$3) ON CONFLICT DO NOTHING',[conversationId,a.member_id,a.mentor_id]);}}res.json({status:r.rows[0].status});
 });
 
 app.post('/api/mentor/request',auth,rateLimit({windowMs:60*60*1000,limit:4}),async(req,res)=>{const topic=clean(req.body.topic,140),message=clean(req.body.message,2500);if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte Thema und Nachricht eingeben.'});try{await notifyAdmins('Mentorenanfrage von '+req.user.display_name, 'Mitglied: '+req.user.display_name+' ('+req.user.email+')\nThema: '+topic+'\n\nAnfrage:\n'+message,req.user.email);res.status(201).json({ok:true,message:'Mentorenanfrage an die Administration gesendet.'});}catch(e){res.status(503).json({error:'E-Mail-Versand derzeit nicht verfügbar.'});}});
