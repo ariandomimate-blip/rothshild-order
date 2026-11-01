@@ -3,27 +3,22 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import pg from 'pg';
+import crypto from 'node:crypto';
 
 const app=express();
-const allowedOrigin=process.env.APP_ORIGIN;
-if(!allowedOrigin)throw new Error('APP_ORIGIN must be set to the public shop origin.');
-app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'none'"],"connect-src":["'self'","https://api.telegram.org"],"img-src":["'none'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
-app.use(cors({origin:allowedOrigin,methods:['POST','GET','OPTIONS'],allowedHeaders:['Content-Type']}));
-app.use(express.json({limit:'20kb'}));
-const clean=(value,max=4000)=>String(value??'').trim().slice(0,max);
-const catalog={
- 'Royal Shield':100,
- 'Mobility Staff':200,
- 'Power Ring':400,
- 'Royal Silver Bar':350,
- 'Menorah Pendant Necklace':215,
- 'Amber Glass Candle':130
-};
-app.get('/api/health',(req,res)=>res.json({ok:true}));
-
-// Telegram product menu: send /start to the configured bot to display product buttons.
-// Set TELEGRAM_WEBHOOK_SECRET and configure Telegram's webhook to POST /api/telegram/webhook.
-const botCatalog=[
+const {Pool}=pg;
+const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false}):null;
+const origin=process.env.APP_ORIGIN;
+if(!origin) throw new Error('APP_ORIGIN must be configured.');
+if(!process.env.TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is missing.');
+if(!process.env.TELEGRAM_ADMIN_CHAT_ID) throw new Error('TELEGRAM_ADMIN_CHAT_ID is missing.');
+app.set('trust proxy',1);
+app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'none'"],"connect-src":["'self'"],"img-src":["'self'","data:"],"style-src":["'self'","'unsafe-inline'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
+app.use(cors({origin,methods:['GET','POST'],allowedHeaders:['Content-Type','X-Telegram-Bot-Api-Secret-Token']}));
+app.use(express.json({limit:'30kb'}));
+const clean=(v,n=500)=>String(v??'').trim().slice(0,n);
+const catalog=[
  {id:'shield',name:'Royal Shield',price:100},
  {id:'staff',name:'Mobility Staff',price:200},
  {id:'ring',name:'Power Ring',price:400},
@@ -31,379 +26,97 @@ const botCatalog=[
  {id:'pendant',name:'Menorah Pendant Necklace',price:215},
  {id:'candle',name:'Amber Glass Candle',price:130}
 ];
-const botSessions=new Map();
-const botKey=id=>botCatalog.find(p=>p.id===id);
-async function telegram(method,payload){
- const token=process.env.TELEGRAM_BOT_TOKEN;
- if(!token)throw new Error('TELEGRAM_BOT_TOKEN fehlt');
- const r=await fetch('https://api.telegram.org/bot'+token+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
- const j=await r.json().catch(()=>({}));
- if(!r.ok||j.ok!==true)throw new Error(j.description||'Telegram API Fehler');
- return j.result;
+const sessions=new Map();
+const states=new Map();
+const money=n=>'$'+Number(n).toFixed(2);
+const orderId=()=> 'RO-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomBytes(3).toString('hex').toUpperCase();
+const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
+ order_number text PRIMARY KEY, customer_name text NOT NULL, customer_email text,
+ telegram_chat_id text, items jsonb NOT NULL, total numeric(12,2) NOT NULL,
+ txid text, status text NOT NULL DEFAULT 'awaiting_txid',
+ created_at timestamptz NOT NULL DEFAULT now(), paid_at timestamptz
+)`;
+async function init(){if(pool)await pool.query(orderTable);}
+async function tg(method,payload){
+ const r=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+ const data=await r.json().catch(()=>({}));
+ if(!r.ok||data.ok!==true)throw new Error(data.description||'Telegram API failed');
+ return data.result;
 }
-function menuKeyboard(){
- return {inline_keyboard:[
-  ...botCatalog.map(p=>[{text:p.name+' · 
-app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
- try{
-  const name=clean(req.body?.customerName,100);
-  const email=clean(req.body?.customerEmail,254).toLowerCase();
-  const orderNumber=clean(req.body?.orderNumber,40);
-  const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
-  }
-  const items=[];
-  for(const item of rawItems){
-   const product=clean(item?.name,100),quantity=Number(item?.quantity);
-   if(!Object.hasOwn(catalog,product)||!Number.isInteger(quantity)||quantity<1||quantity>25){
-    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
-   }
-   items.push({name:product,quantity,unitPrice:catalog[product],lineTotal:catalog[product]*quantity});
-  }
-  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
-   return res.status(503).json({error:'Telegram noch nicht eingerichtet: TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID müssen im Render-Backend gesetzt sein.'});
-  }
-  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
-  const message=[
-   'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,
-   'Name: '+name,
-   'E-Mail: '+email,
-   '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — $'+item.lineTotal.toFixed(2)),
-   '',
-   'Warenwert: $'+total.toFixed(2),
-   '',
-   'Status: Anfrage eingegangen. Zahlung, Verfügbarkeit und Versandkosten sind NICHT bestätigt.'
-  ].join('\\n');
-  const response=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
-   method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:message,disable_web_page_preview:true})
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true){
-   console.error('Telegram send failed:',result.description||response.status);
-   return res.status(502).json({error:'Telegram konnte die Bestellnachricht nicht annehmen.'});
-  }
-  res.status(201).json({ok:true,orderNumber,total});
- }catch(error){
-  console.error('Shop order error:',error.message);
-  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
- }
-});
-const port=Number(process.env.PORT||3000);
-app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD order API listening on '+port));
-+p.price,callback_data:'add:'+p.id}]),
-  [{text:'🛒 Warenkorb ansehen',callback_data:'cart'}]
- ]};
-}
-function cartKeyboard(cart){
- const rows=botCatalog.filter(p=>(cart[p.id]||0)>0).map(p=>[{text:'− '+p.name,callback_data:'dec:'+p.id},{text:String(cart[p.id])+' ×',callback_data:'noop'},{text:'+ '+p.name,callback_data:'add:'+p.id}]);
- rows.push([{text:'Weiter zur Bestellübersicht',callback_data:'checkout'}],[{text:'Produkte',callback_data:'menu'}]);
- return {inline_keyboard:rows};
-}
-function cartText(cart){
- const rows=botCatalog.filter(p=>(cart[p.id]||0)>0);
- if(!rows.length)return 'Dein Warenkorb ist leer. Wähle ein Produkt:';
- const total=rows.reduce((sum,p)=>sum+p.price*cart[p.id],0);
- return '🛒 Warenkorb\n'+rows.map(p=>p.name+' × '+cart[p.id]+' — 
-app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
- try{
-  const name=clean(req.body?.customerName,100);
-  const email=clean(req.body?.customerEmail,254).toLowerCase();
-  const orderNumber=clean(req.body?.orderNumber,40);
-  const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
-  }
-  const items=[];
-  for(const item of rawItems){
-   const product=clean(item?.name,100),quantity=Number(item?.quantity);
-   if(!Object.hasOwn(catalog,product)||!Number.isInteger(quantity)||quantity<1||quantity>25){
-    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
-   }
-   items.push({name:product,quantity,unitPrice:catalog[product],lineTotal:catalog[product]*quantity});
-  }
-  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
-   return res.status(503).json({error:'Telegram noch nicht eingerichtet: TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID müssen im Render-Backend gesetzt sein.'});
-  }
-  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
-  const message=[
-   'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,
-   'Name: '+name,
-   'E-Mail: '+email,
-   '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — $'+item.lineTotal.toFixed(2)),
-   '',
-   'Warenwert: $'+total.toFixed(2),
-   '',
-   'Status: Anfrage eingegangen. Zahlung, Verfügbarkeit und Versandkosten sind NICHT bestätigt.'
-  ].join('\\n');
-  const response=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
-   method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:message,disable_web_page_preview:true})
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true){
-   console.error('Telegram send failed:',result.description||response.status);
-   return res.status(502).json({error:'Telegram konnte die Bestellnachricht nicht annehmen.'});
-  }
-  res.status(201).json({ok:true,orderNumber,total});
- }catch(error){
-  console.error('Shop order error:',error.message);
-  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
- }
-});
-const port=Number(process.env.PORT||3000);
-app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD order API listening on '+port));
-+(p.price*cart[p.id]).toFixed(2)).join('\n')+'\n\nWarenwert: 
-app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
- try{
-  const name=clean(req.body?.customerName,100);
-  const email=clean(req.body?.customerEmail,254).toLowerCase();
-  const orderNumber=clean(req.body?.orderNumber,40);
-  const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
-  }
-  const items=[];
-  for(const item of rawItems){
-   const product=clean(item?.name,100),quantity=Number(item?.quantity);
-   if(!Object.hasOwn(catalog,product)||!Number.isInteger(quantity)||quantity<1||quantity>25){
-    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
-   }
-   items.push({name:product,quantity,unitPrice:catalog[product],lineTotal:catalog[product]*quantity});
-  }
-  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
-   return res.status(503).json({error:'Telegram noch nicht eingerichtet: TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID müssen im Render-Backend gesetzt sein.'});
-  }
-  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
-  const message=[
-   'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,
-   'Name: '+name,
-   'E-Mail: '+email,
-   '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — $'+item.lineTotal.toFixed(2)),
-   '',
-   'Warenwert: $'+total.toFixed(2),
-   '',
-   'Status: Anfrage eingegangen. Zahlung, Verfügbarkeit und Versandkosten sind NICHT bestätigt.'
-  ].join('\\n');
-  const response=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
-   method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:message,disable_web_page_preview:true})
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true){
-   console.error('Telegram send failed:',result.description||response.status);
-   return res.status(502).json({error:'Telegram konnte die Bestellnachricht nicht annehmen.'});
-  }
-  res.status(201).json({ok:true,orderNumber,total});
- }catch(error){
-  console.error('Shop order error:',error.message);
-  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
- }
-});
-const port=Number(process.env.PORT||3000);
-app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD order API listening on '+port));
-+total.toFixed(2)+'\nNoch keine Zahlung bestätigt.';
-}
+const productKeyboard=()=>({inline_keyboard:[...catalog.map(p=>[{text:p.name+' · '+money(p.price),callback_data:'add:'+p.id}]),[{text:'🛒 Warenkorb',callback_data:'cart'}]]});
+function cartKeyboard(cart){const rows=catalog.filter(p=>cart[p.id]).map(p=>[{text:'− '+p.name,callback_data:'dec:'+p.id},{text:String(cart[p.id])+'×',callback_data:'noop'},{text:'+ '+p.name,callback_data:'add:'+p.id}]);rows.push([{text:'Zur Kasse',callback_data:'checkout'}],[{text:'Produkte',callback_data:'menu'}]);return {inline_keyboard:rows};}
+function cartRows(cart){return catalog.filter(p=>cart[p.id]).map(p=>({...p,quantity:cart[p.id],lineTotal:p.price*cart[p.id]}));}
+function cartText(cart){const rows=cartRows(cart);if(!rows.length)return 'Der Warenkorb ist leer. Wähle Produkte:';return '🛒 Warenkorb\n'+rows.map(p=>p.name+' × '+p.quantity+' — '+money(p.lineTotal)).join('\n')+'\n\nGesamt: '+money(rows.reduce((a,p)=>a+p.lineTotal,0));}
+async function saveOrder(order){if(!pool)throw new Error('DATABASE_URL muss gesetzt sein, damit Bestellungen dauerhaft gespeichert werden.');await pool.query('INSERT INTO shop_orders(order_number,customer_name,customer_email,telegram_chat_id,items,total,status) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)',[order.id,order.name,order.email||null,order.chatId||null,JSON.stringify(order.items),order.total,order.status||'awaiting_txid']);}
+async function getOrder(id){if(!pool)return null;const r=await pool.query('SELECT * FROM shop_orders WHERE order_number=$1',[id]);return r.rows[0]||null;}
+async function adminOrder(order){const lines=order.items.map(i=>i.name+' × '+i.quantity+' — '+money(i.lineTotal)).join('\n');return tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'🛍 Neue Bestellung\n'+order.id+'\nKunde: '+order.name+'\nE-Mail: '+(order.email||'nicht angegeben')+'\n\n'+lines+'\n\nGesamt: '+money(order.total)+'\nStatus: TXID/Zahlung offen.',reply_markup:{inline_keyboard:[[{text:'TXID prüfen / Zahlung bestätigen',callback_data:'review:'+order.id}]]}});}
+app.get('/api/health',(req,res)=>res.json({ok:true,storage:pool?'postgres':'unavailable'}));
 app.post('/api/telegram/webhook',async(req,res)=>{
  try{
   const secret=process.env.TELEGRAM_WEBHOOK_SECRET;
   if(secret&&req.get('x-telegram-bot-api-secret-token')!==secret)return res.sendStatus(403);
   const update=req.body||{};
-  if(update.message?.text==='/start'){
-   const chatId=update.message.chat.id;
-   botSessions.set(String(chatId),{cart:{}});
-   await telegram('sendMessage',{chat_id:chatId,text:'Willkommen! Wähle Produkte für deinen Warenkorb. Preise und Verfügbarkeit werden vor Zahlung bestätigt.',reply_markup:menuKeyboard()});
-  }else if(update.callback_query){
-   const cb=update.callback_query,chatId=cb.message.chat.id,key=String(chatId);
-   const session=botSessions.get(key)||{cart:{}},data=String(cb.data||'');
-   if(data.startsWith('add:')){const p=botKey(data.slice(4));if(p)session.cart[p.id]=Math.min(25,(session.cart[p.id]||0)+1);}
-   else if(data.startsWith('dec:')){const id=data.slice(4);session.cart[id]=Math.max(0,(session.cart[id]||0)-1);}
-   botSessions.set(key,session);
-   if(data==='noop'){await telegram('answerCallbackQuery',{callback_query_id:cb.id});return res.sendStatus(200);}
-   if(data==='menu'){await telegram('editMessageText',{chat_id:chatId,message_id:cb.message.message_id,text:'Wähle Produkte:',reply_markup:menuKeyboard()});}
-   else if(data==='cart'||data.startsWith('add:')||data.startsWith('dec:')){await telegram('editMessageText',{chat_id:chatId,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
-   else if(data==='checkout'){
-    const lines=botCatalog.filter(p=>(session.cart[p.id]||0)>0);
-    if(!lines.length)await telegram('answerCallbackQuery',{callback_query_id:cb.id,text:'Dein Warenkorb ist leer.'});
+  const msg=update.message,cb=update.callback_query;
+  if(msg?.text){
+   const chat=String(msg.chat.id),text=clean(msg.text,1000);
+   let session=sessions.get(chat)||{cart:{}};
+   if(text==='/start'||text==='/menu'){sessions.set(chat,{cart:{}});await tg('sendMessage',{chat_id:msg.chat.id,text:'Willkommen im Shop. Wähle Produkte; der endgültige Preis und die Zahlung werden separat bestätigt.',reply_markup:productKeyboard()});}
+   else if(states.get(chat)==='name'){
+    if(text.length<2){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein.'});}
+    else {session.name=text;states.set(chat,'email');sessions.set(chat,session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
+   }else if(states.get(chat)==='email'){
+    const email=text==='-'?'':text.toLowerCase();
+    if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){await tg('sendMessage',{chat_id:msg.chat.id,text:'Die E-Mail sieht ungültig aus. Bitte erneut eingeben oder „-“ senden.'});}
     else {
-     const total=lines.reduce((sum,p)=>sum+p.price*session.cart[p.id],0);
-     const summary='Bestellübersicht\n'+lines.map(p=>p.name+' × '+session.cart[p.id]+' — 
-app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
- try{
-  const name=clean(req.body?.customerName,100);
-  const email=clean(req.body?.customerEmail,254).toLowerCase();
-  const orderNumber=clean(req.body?.orderNumber,40);
-  const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
-  }
-  const items=[];
-  for(const item of rawItems){
-   const product=clean(item?.name,100),quantity=Number(item?.quantity);
-   if(!Object.hasOwn(catalog,product)||!Number.isInteger(quantity)||quantity<1||quantity>25){
-    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
-   }
-   items.push({name:product,quantity,unitPrice:catalog[product],lineTotal:catalog[product]*quantity});
-  }
-  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
-   return res.status(503).json({error:'Telegram noch nicht eingerichtet: TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID müssen im Render-Backend gesetzt sein.'});
-  }
-  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
-  const message=[
-   'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,
-   'Name: '+name,
-   'E-Mail: '+email,
-   '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — $'+item.lineTotal.toFixed(2)),
-   '',
-   'Warenwert: $'+total.toFixed(2),
-   '',
-   'Status: Anfrage eingegangen. Zahlung, Verfügbarkeit und Versandkosten sind NICHT bestätigt.'
-  ].join('\\n');
-  const response=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
-   method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:message,disable_web_page_preview:true})
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true){
-   console.error('Telegram send failed:',result.description||response.status);
-   return res.status(502).json({error:'Telegram konnte die Bestellnachricht nicht annehmen.'});
-  }
-  res.status(201).json({ok:true,orderNumber,total});
- }catch(error){
-  console.error('Shop order error:',error.message);
-  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
- }
-});
-const port=Number(process.env.PORT||3000);
-app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD order API listening on '+port));
-+(p.price*session.cart[p.id]).toFixed(2)).join('\n')+'\nWarenwert: 
-app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
- try{
-  const name=clean(req.body?.customerName,100);
-  const email=clean(req.body?.customerEmail,254).toLowerCase();
-  const orderNumber=clean(req.body?.orderNumber,40);
-  const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
-  }
-  const items=[];
-  for(const item of rawItems){
-   const product=clean(item?.name,100),quantity=Number(item?.quantity);
-   if(!Object.hasOwn(catalog,product)||!Number.isInteger(quantity)||quantity<1||quantity>25){
-    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
-   }
-   items.push({name:product,quantity,unitPrice:catalog[product],lineTotal:catalog[product]*quantity});
-  }
-  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
-   return res.status(503).json({error:'Telegram noch nicht eingerichtet: TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID müssen im Render-Backend gesetzt sein.'});
-  }
-  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
-  const message=[
-   'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,
-   'Name: '+name,
-   'E-Mail: '+email,
-   '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — $'+item.lineTotal.toFixed(2)),
-   '',
-   'Warenwert: $'+total.toFixed(2),
-   '',
-   'Status: Anfrage eingegangen. Zahlung, Verfügbarkeit und Versandkosten sind NICHT bestätigt.'
-  ].join('\\n');
-  const response=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
-   method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:message,disable_web_page_preview:true})
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true){
-   console.error('Telegram send failed:',result.description||response.status);
-   return res.status(502).json({error:'Telegram konnte die Bestellnachricht nicht annehmen.'});
-  }
-  res.status(201).json({ok:true,orderNumber,total});
- }catch(error){
-  console.error('Shop order error:',error.message);
-  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
- }
-});
-const port=Number(process.env.PORT||3000);
-app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD order API listening on '+port));
-+total.toFixed(2)+'\n\nBitte sende Name und E-Mail als nächste Nachricht. Die Bestellung wird erst nach Prüfung verbindlich.';
-     session.stage='customer';session.lastSummary=summary;botSessions.set(key,session);
-     await telegram('sendMessage',{chat_id:chatId,text:summary});
+     const rows=cartRows(session.cart),total=rows.reduce((a,p)=>a+p.lineTotal,0),id=orderId();
+     const order={id,name:session.name,email,chatId:chat,items:rows,total,status:'awaiting_txid'};
+     await saveOrder(order);await adminOrder(order);
+     states.set(chat,'txid:'+id);sessions.set(chat,session);
+     await tg('sendMessage',{chat_id:msg.chat.id,text:'Bestellung '+id+' wurde übermittelt. Gesamt: '+money(total)+'. Bitte warte auf die offizielle Zahlungsanweisung. Sende anschließend die Transaktions-ID (TXID) als Nachricht. Die Zahlung ist noch NICHT bestätigt.'});
     }
+   }else if(states.get(chat)?.startsWith('txid:')){
+    const id=states.get(chat).slice(5);
+    if(text.length<8){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende eine vollständige TXID.'});}
+    else {
+     await pool.query('UPDATE shop_orders SET txid=$1,status=$2 WHERE order_number=$3 AND telegram_chat_id=$4',[text,'txid_submitted',id,chat]);
+     const order=await getOrder(id);
+     await tg('sendMessage',{chat_id:msg.chat.id,text:'TXID für '+id+' wurde an die Administration zur Prüfung übermittelt. Zahlung ist bis zur Bestätigung weiterhin offen.'});
+     await tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'🔎 TXID eingegangen\nBestellung: '+id+'\nTXID: '+text+'\nBitte unabhängig prüfen.',reply_markup:{inline_keyboard:[[{text:'Zahlung bestätigen',callback_data:'paid:'+id},{text:'Ablehnen',callback_data:'reject:'+id}]]}});
+    }
+   }else {await tg('sendMessage',{chat_id:msg.chat.id,text:'Nutze /start, um den Shop zu öffnen.'});}
+  }else if(cb){
+   const chat=String(cb.message.chat.id),data=String(cb.data||'');let session=sessions.get(chat)||{cart:{}};
+   if(data.startsWith('add:')){const p=catalog.find(p=>p.id===data.slice(4));if(p)session.cart[p.id]=Math.min(25,(session.cart[p.id]||0)+1);sessions.set(chat,session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
+   else if(data.startsWith('dec:')){const id=data.slice(4);session.cart[id]=Math.max(0,(session.cart[id]||0)-1);sessions.set(chat,session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
+   else if(data==='menu')await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:'Wähle Produkte:',reply_markup:productKeyboard()});
+   else if(data==='cart')await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});
+   else if(data==='noop'){}
+   else if(data==='checkout'){if(!cartRows(session.cart).length)await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Warenkorb ist leer.'});else{states.set(chat,'name');await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitte gib deinen vollständigen Namen ein, um die Bestellung anzulegen.'});}}
+   else if(data.startsWith('paid:')||data.startsWith('reject:')){
+    if(String(cb.from.id)!==String(process.env.TELEGRAM_ADMIN_USER_ID)){await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Nicht autorisiert.'});}
+    else {const id=data.slice(data.indexOf(':')+1),paid=data.startsWith('paid:');await pool.query('UPDATE shop_orders SET status=$1,paid_at=CASE WHEN $2 THEN now() ELSE paid_at END WHERE order_number=$3',[paid?'paid':'payment_rejected',paid,id]);const order=await getOrder(id);if(order?.telegram_chat_id)await tg('sendMessage',{chat_id:order.telegram_chat_id,text:paid?'Zahlung für '+id+' wurde durch die Administration bestätigt. Rechnung: '+origin+'/api/shop/invoice/'+id: 'Zahlung für '+id+' wurde nicht bestätigt. Bitte kontaktiere den Support.'});await tg('answerCallbackQuery',{callback_query_id:cb.id,text:paid?'Zahlung bestätigt':'Abgelehnt'});}
    }
-   await telegram('answerCallbackQuery',{callback_query_id:cb.id});
-  }else if(update.message?.text&&botSessions.get(String(update.message.chat.id))?.stage==='customer'){
-   const chatId=update.message.chat.id,session=botSessions.get(String(chatId));
-   const customer=clean(update.message.text,250);
-   const lines=botCatalog.filter(p=>(session.cart[p.id]||0)>0);
-   const total=lines.reduce((sum,p)=>sum+p.price*session.cart[p.id],0);
-   const orderId='TG-'+Date.now();
-   const adminText='Telegram Bestellanfrage\nBestellnummer: '+orderId+'\nKunde: '+customer+'\nKunden-Chat: '+chatId+'\n'+session.lastSummary+'\nStatus: Zahlung nicht bestätigt.';
-   if(process.env.TELEGRAM_ADMIN_CHAT_ID)await telegram('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:adminText,reply_markup:{inline_keyboard:[[{text:'TXID prüfen / Zahlung bestätigen',callback_data:'admincheck:'+orderId}]]}});
-   await telegram('sendMessage',{chat_id:chatId,text:'Bestellanfrage '+orderId+' wurde weitergeleitet. Bitte TXID erst nach einer offiziellen Zahlungsaufforderung senden. Zahlung ist noch nicht bestätigt.'});
-   session.stage='';botSessions.set(String(chatId),session);
+   else if(data.startsWith('review:')){if(String(cb.from.id)!==String(process.env.TELEGRAM_ADMIN_USER_ID))await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Nicht autorisiert.'});else{const order=await getOrder(data.slice(7));await tg('sendMessage',{chat_id:cb.message.chat.id,text:order?'Bestellung '+order.order_number+'\nStatus: '+order.status+'\nTXID: '+(order.txid||'noch keine'):'Bestellung nicht gefunden.'});}}
+   await tg('answerCallbackQuery',{callback_query_id:cb.id});
   }
   res.sendStatus(200);
  }catch(e){console.error('Telegram webhook error:',e.message);res.sendStatus(200);}
 });
-
-app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
+app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8}),async(req,res)=>{
  try{
-  const name=clean(req.body?.customerName,100);
-  const email=clean(req.body?.customerEmail,254).toLowerCase();
-  const orderNumber=clean(req.body?.orderNumber,40);
-  const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
-  }
-  const items=[];
-  for(const item of rawItems){
-   const product=clean(item?.name,100),quantity=Number(item?.quantity);
-   if(!Object.hasOwn(catalog,product)||!Number.isInteger(quantity)||quantity<1||quantity>25){
-    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
-   }
-   items.push({name:product,quantity,unitPrice:catalog[product],lineTotal:catalog[product]*quantity});
-  }
-  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
-   return res.status(503).json({error:'Telegram noch nicht eingerichtet: TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID müssen im Render-Backend gesetzt sein.'});
-  }
-  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
-  const message=[
-   'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,
-   'Name: '+name,
-   'E-Mail: '+email,
-   '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — $'+item.lineTotal.toFixed(2)),
-   '',
-   'Warenwert: $'+total.toFixed(2),
-   '',
-   'Status: Anfrage eingegangen. Zahlung, Verfügbarkeit und Versandkosten sind NICHT bestätigt.'
-  ].join('\\n');
-  const response=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
-   method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:message,disable_web_page_preview:true})
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true){
-   console.error('Telegram send failed:',result.description||response.status);
-   return res.status(502).json({error:'Telegram konnte die Bestellnachricht nicht annehmen.'});
-  }
-  res.status(201).json({ok:true,orderNumber,total});
- }catch(error){
-  console.error('Shop order error:',error.message);
-  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
- }
+  const name=clean(req.body?.customerName,100),email=clean(req.body?.customerEmail,254).toLowerCase(),raw=Array.isArray(req.body?.items)?req.body.items:[];
+  if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||raw.length<1||raw.length>20)return res.status(400).json({error:'Name, gültige E-Mail und Warenkorb erforderlich.'});
+  const items=[];for(const item of raw){const p=catalog.find(p=>p.name===clean(item.name,100)),qty=Number(item.quantity);if(!p||!Number.isInteger(qty)||qty<1||qty>25)return res.status(400).json({error:'Ungültiges Produkt oder Menge.'});items.push({...p,quantity:qty,lineTotal:p.price*qty});}
+  const total=items.reduce((s,i)=>s+i.lineTotal,0),id=orderId(),order={id,name,email,chatId:null,items,total,status:'awaiting_txid'};
+  await saveOrder(order);await adminOrder(order);res.status(201).json({ok:true,orderNumber:id,total,status:order.status,txidUrl:origin+'/api/shop/txid/'+id});
+ }catch(e){console.error('Web order failed:',e.message);res.status(500).json({error:'Bestellung konnte nicht gespeichert oder übermittelt werden.'});}
 });
+app.post('/api/shop/txid/:id',async(req,res)=>{
+ const txid=clean(req.body?.txid,300);if(txid.length<8)return res.status(400).json({error:'TXID ist zu kurz.'});
+ try{const r=await pool.query("UPDATE shop_orders SET txid=$1,status='txid_submitted' WHERE order_number=$2 AND status IN ('awaiting_txid','txid_submitted') RETURNING *",[txid,clean(req.params.id,40)]);if(!r.rowCount)return res.status(404).json({error:'Bestellung nicht gefunden oder bereits abgeschlossen.'});const o=r.rows[0];await tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'TXID für Webbestellung '+o.order_number+'\nKunde: '+o.customer_name+' ('+o.customer_email+')\nTXID: '+txid+'\nGesamt: '+money(o.total)+'\nBitte manuell prüfen.',reply_markup:{inline_keyboard:[[{text:'Zahlung bestätigen',callback_data:'paid:'+o.order_number},{text:'Ablehnen',callback_data:'reject:'+o.order_number}]]}});res.json({ok:true,status:'txid_submitted'});}catch(e){console.error(e.message);res.status(500).json({error:'TXID konnte nicht gespeichert werden.'});}
+});
+app.get('/api/shop/invoice/:id',async(req,res)=>{try{const o=await getOrder(clean(req.params.id,40));if(!o||o.status!=='paid')return res.status(404).send('Rechnung erst nach bestätigter Zahlung verfügbar.');const lines=o.items.map(i=>'<tr><td>'+escapeHtml(i.name)+'</td><td>'+i.quantity+'</td><td>'+money(i.lineTotal)+'</td></tr>').join('');res.type('html').send('<!doctype html><html lang="de"><meta charset="utf-8"><title>Rechnung '+o.order_number+'</title><style>body{font:16px system-ui;max-width:800px;margin:40px auto;padding:20px;color:#222}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #ccc;text-align:left}.actions{margin:20px 0}@media print{.actions{display:none}}</style><h1>Rechnung</h1><p>ROTHSHILD · Order of Light</p><p>Rechnungsnummer: '+o.order_number+'<br>Kunde: '+escapeHtml(o.customer_name)+'<br>Datum: '+new Date(o.paid_at).toLocaleDateString('de-DE')+'</p><table><thead><tr><th>Artikel</th><th>Menge</th><th>Betrag</th></tr></thead><tbody>'+lines+'</tbody></table><h2>Gesamt: '+money(o.total)+'</h2><p>Zahlungsstatus: bezahlt</p><div class="actions"><button onclick="window.print()">Drucken / Als PDF speichern</button></div></html>');}catch(e){res.status(500).send('Rechnung konnte nicht geladen werden.');}});
+function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 const port=Number(process.env.PORT||3000);
-app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD order API listening on '+port));
+await init();
+app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD Telegram order API listening on '+port));
