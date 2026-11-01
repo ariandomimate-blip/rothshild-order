@@ -16,6 +16,11 @@
 - `DATABASE_URL` wird aus der Render-Postgres-Instanz verbunden
 - `APP_ORIGIN` wird als manuell zu setzende Variable offengelassen
 
+Für Bestellbenachrichtigungen im Shop zusätzlich als **Secret/Environment Variable** im Render-Service setzen:
+- `TELEGRAM_BOT_TOKEN`: Bot-Token aus BotFather (niemals in GitHub oder Frontend-Dateien eintragen).
+- `TELEGRAM_ADMIN_CHAT_ID`: private Chat-ID des Administrators, der Bestellmeldungen empfangen soll. Der Administrator muss den Bot zuerst in Telegram öffnen und `/start` senden; die Chat-ID lässt sich anschließend über die Bot-Updates oder einen vertrauenswürdigen Telegram-Bot-Chat-ID-Helfer ermitteln.
+Die Website sendet Bestellnummer, Warenkorb und Kundendaten serverseitig an diese Chat-ID. Der E-Mail-Button öffnet einen vorausgefüllten E-Mail-Entwurf; der Nutzer muss ihn im Mailprogramm selbst absenden. Telegram-Versand und E-Mail-Entwurf sind getrennte Aktionen. Keine Zahlung wird hiermit bestätigt.
+
 Nach Bereitstellung zuerst die Render-URL testen. Danach `APP_ORIGIN` exakt auf die öffentliche Origin setzen, z. B. `https://DEIN-SERVICE.onrender.com` (ohne abschließenden Slash), speichern und neu deployen.
 
 ## Datenbankschema anwenden
