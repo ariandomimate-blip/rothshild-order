@@ -120,7 +120,81 @@ app.post('/api/conversations/:id/messages',auth,(req,res)=>res.status(503).json(
 app.get('/api/profile',auth,async(req,res)=>{const r=await q('SELECT display_name,bio,profile_rank,profile_title,avatar_data,cover_data FROM users WHERE id=$1',[req.user.id]);if(!r.rowCount)return res.status(404).json({error:'Profil nicht gefunden'});const p=r.rows[0];res.json({profile:{...p,rank:p.profile_rank,title:p.profile_title}});});
 app.patch('/api/profile',auth,async(req,res)=>{const name=clean(req.body.displayName,70),bio=clean(req.body.bio,1200),rank=clean(req.body.rank,100),title=clean(req.body.title,100),avatar=String(req.body.avatarData||''),cover=String(req.body.coverData||'');const validImage=v=>!v||(v.length<1250000&&/^data:image\/(png|jpeg|webp|gif);base64,/.test(v));if(name.length<2||!validImage(avatar)||!validImage(cover))return res.status(400).json({error:'Name oder Bildformat/-größe ungültig'});await q('UPDATE users SET display_name=$1,bio=$2,profile_rank=$3,profile_title=$4,avatar_data=$5,cover_data=$6 WHERE id=$7',[name,bio,rank,title,avatar||null,cover||null,req.user.id]);res.json({ok:true});});
 app.post('/api/mentor/ai-chat',auth,async(req,res)=>{const message=clean(req.body.message,4000);if(!message)return res.status(400).json({error:'Nachricht fehlt'});if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'KI-Mentor noch nicht aktiviert: OPENAI_API_KEY in Render setzen.'});try{const response=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-4o-mini',messages:[{role:'system',content:'Du bist ein KI-Mentor mit ruhigem, erleuchtetem, spirituell-mystischem und philosophischem Charakter. Antworte warm, respektvoll und kritisch denkend. Unterscheide belegte Geschichte von Legenden und Spekulationen. Behaupte keine geheimen Mächte oder gesicherte Mitgliedschaft. Du bist eine KI, kein menschlicher Mentor oder Therapeut.'},{role:'user',content:message}],temperature:0.7})});const data=await response.json();if(!response.ok)throw Error(data.error?.message||'KI-Anfrage fehlgeschlagen');res.json({reply:data.choices?.[0]?.message?.content||'Ich kann darauf gerade nicht antworten.'})}catch(e){res.status(502).json({error:'KI-Mentor derzeit nicht erreichbar.'});}});
-\napp.use(express.static(path.join(__dirname,'../public')));
+\n
+const shopOrderLimit=rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false});
+const SHOP_CATALOG={
+ 'Royal Shield':100,
+ 'Mobility Staff':200,
+ 'Power Ring':400,
+ 'Royal Silver Bar':350,
+ 'Menorah Pendant Necklace':215,
+ 'Amber Glass Candle':130
+};
+app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
+ try{
+  const customerName=clean(req.body?.customerName,100);
+  const customerEmail=clean(req.body?.customerEmail,254).toLowerCase();
+  const orderNumber=clean(req.body?.orderNumber,40);
+  const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
+  if(customerName.length<2||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
+   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
+  }
+  const items=[];
+  for(const item of rawItems){
+   const name=clean(item?.name,100),quantity=Number(item?.quantity);
+   if(!Object.hasOwn(SHOP_CATALOG,name)||!Number.isInteger(quantity)||quantity<1||quantity>25){
+    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
+   }
+   items.push({name,quantity,unitPrice:SHOP_CATALOG[name],lineTotal:SHOP_CATALOG[name]*quantity});
+  }
+  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
+  const lines=[
+   'Neue Shop-Bestellanfrage',
+   'Bestellnummer: '+orderNumber,
+   'Name: '+customerName,
+   'E-Mail: '+customerEmail,
+   '',
+   ...items.map(item=>item.name+' × '+item.quantity+' — 
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+const port=Number(process.env.PORT||3000);
+const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
+app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
++item.lineTotal.toFixed(2)),
+   '',
+   'Warenwert: 
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+const port=Number(process.env.PORT||3000);
+const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
+app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
++total.toFixed(2),
+   '',
+   'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
+   'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
+  ];
+  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
+   return res.status(503).json({error:'Telegram-Versand noch nicht konfiguriert. In Render TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID setzen.'});
+  }
+  const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\\n'),disable_web_page_preview:true})
+  });
+  const tgData=await tg.json().catch(()=>({}));
+  if(!tg.ok||tgData.ok!==true){
+   console.error('Telegram order notification failed:',tgData.description||tg.status);
+   return res.status(502).json({error:'Die Bestellnachricht konnte nicht an Telegram übermittelt werden.'});
+  }
+  res.status(201).json({ok:true,orderNumber,total,items});
+ }catch(e){
+  console.error('Shop order failed:',e.message);
+  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
+ }
+});
+
+app.use(express.static(path.join(__dirname,'../public')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
 const port=Number(process.env.PORT||3000);
