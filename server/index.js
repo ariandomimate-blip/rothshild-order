@@ -179,7 +179,8 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
    return res.status(503).json({error:'E-Mail-Versand nicht konfiguriert. SMTP-Einstellungen in Render ergänzen.'});
   }
   if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
-   return res.status(503).json({error:'Telegram-Versand noch nicht konfiguriert. In Render TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID setzen.'});
+   console.warn('Telegram order notification skipped: credentials not configured.');
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent:true,telegramSent:false});
   }
   const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
    method:'POST',headers:{'Content-Type':'application/json'},
