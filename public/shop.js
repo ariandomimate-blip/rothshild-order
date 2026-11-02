@@ -29,7 +29,7 @@ cartBox.innerHTML=`
 <label>Name<input name="name" autocomplete="name" required minlength="2" placeholder="Vor- und Nachname"></label>
 <label>E-Mail<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label>
 <div class="cart-buttons">
-<button class="gold" type="button" id="cart-email">Bestellnachricht per E-Mail öffnen</button>
+<button class="gold" type="button" id="cart-email">Bestellnachricht per E-Mail öffnen</button>\n<button class="gold" type="button" id="go-checkout">Zur Kasse</button>
 <button class="gold" type="button" id="cart-telegram">Bestellung an Telegram übermitteln</button>
 <a class="outline" href="https://t.me/Rotshild_Adriano" target="_blank" rel="noopener noreferrer">Telegram-Bot öffnen</a>
 </div>
@@ -82,6 +82,11 @@ function customer(){
  const data=new FormData(form);
  return {name:String(data.get('name')).trim(),email:String(data.get('email')).trim()};
 }
+document.querySelector('#go-checkout').addEventListener('click',()=>{
+ if(!cart.size){document.querySelector('#cart-status').textContent='Bitte zuerst Produkte auswählen.';return;}
+ sessionStorage.setItem('roths-order-draft',JSON.stringify({items:items().map(item=>({name:item.name,price:item.price,quantity:item.quantity}))}));
+ location.href='/checkout.html';
+});
 document.querySelector('#cart-email').addEventListener('click',()=>{
  const c=customer();if(!c)return;
  const id=orderNumber(),subject='Bestellanfrage '+id;
