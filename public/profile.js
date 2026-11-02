@@ -8,5 +8,25 @@ $('#avatar').onchange=e=>read(e.target.files[0],v=>{avatarData=v;render({...prof
 $('#cover').onchange=e=>read(e.target.files[0],v=>{coverData=v;render({...profile,cover_data:v})});
 async function load(){try{user=(await api('/me')).user;const p=(await api('/profile')).profile||{};$('#status').textContent='Profil von '+(user.displayName||user.display_name||user.email);$('#profileCard').hidden=false;const f=$('#profileForm');f.elements.displayName.value=p.display_name||user.displayName||user.display_name||'';f.elements.bio.value=p.bio||'';f.elements.rank.value=p.rank||'Kein Rang angegeben';f.elements.title.value=p.title||'Kein Titel angegeben';avatarData=p.avatar_data||null;coverData=p.cover_data||null;render(p)}catch(e){$('#status').textContent=e.message+' — bitte zuerst anmelden.';$('#profileCard').hidden=true}}
 $('#profileForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),msg=$('#profileMsg');msg.textContent='Speichere …';try{await api('/profile',{method:'PATCH',body:JSON.stringify({displayName:f.get('displayName'),bio:f.get('bio'),rank:f.get('rank'),title:f.get('title'),avatarData,coverData})});profile={...profile,display_name:f.get('displayName'),bio:f.get('bio'),rank:f.get('rank'),title:f.get('title'),avatar_data:avatarData,cover_data:coverData};render(profile);msg.textContent='Profil erfolgreich gespeichert.';openEditor(false)}catch(x){msg.textContent=x.message}};
-const mentorForm=$('#mentorRequest');if(mentorForm)mentorForm.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(mentorForm),out=$('#mentorMsg');try{const r=await fetch('/api/mentor/request',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:f.get('topic'),message:f.get('message')})});const d=await r.json();if(!r.ok)throw Error(d.error||'Anfrage fehlgeschlagen');out.textContent=d.message;mentorForm.reset()}catch(x){out.textContent=x.message}});
+const mentorForm=$('#mentorRequest');if(mentorForm)mentorForm.addEventListener('submit',async e=>{
+ e.preventDefault();
+ const f=new FormData(mentorForm),out=$('#mentorMsg');
+ const topic=String(f.get('topic')||'').trim(),message=String(f.get('message')||'').trim();
+ const emailTo='rothschildofficial938@gmail.com';
+ const subject='Mentorenanfrage – '+topic;
+ const body='Mentorenanfrage über die ROTHSHILD-Community\\n\\nThema: '+topic+'\\n\\nNachricht:\\n'+message+'\\n\\nBitte antworte direkt auf diese E-Mail.';
+ const mailto='mailto:'+emailTo+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+ try{
+  const r=await fetch('/api/mentor/request',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,message})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(d.error||'Anfrage konnte nicht übermittelt werden.');
+  out.textContent=d.message||'Mentorenanfrage wurde übermittelt.';
+  mentorForm.reset();
+ }catch(x){
+  out.textContent='Automatischer Versand nicht verfügbar. ';
+  const link=document.createElement('a');
+  link.href=mailto;link.textContent='E-Mail an Rothshild öffnen (Empfänger, Betreff und Nachricht vorausgefüllt)';
+  out.append(link);
+ }
+});
 load();
