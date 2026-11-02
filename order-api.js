@@ -120,7 +120,7 @@ await init();
 app.listen(port,'0.0.0.0',()=>{console.log('ROTHSHILD Telegram order API listening on '+port);void configureTelegramWebhook();});
 async function configureTelegramWebhook(){
  if(!process.env.TELEGRAM_BOT_TOKEN)return console.warn('Telegram webhook not configured: TELEGRAM_BOT_TOKEN is missing.');
- const base=(process.env.RENDER_EXTERNAL_URL||process.env.TELEGRAM_WEBHOOK_BASE_URL||'').replace(/\\/$/,'');
+ const base=(process.env.RENDER_EXTERNAL_URL||process.env.TELEGRAM_WEBHOOK_BASE_URL||'').replace(/\/$/,'');
  if(!base)return console.warn('Telegram webhook not configured: set RENDER_EXTERNAL_URL or TELEGRAM_WEBHOOK_BASE_URL to this API service URL.');
  const url=base+'/api/telegram/webhook';
  try{const result=await tg('setWebhook',{url,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET||undefined,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook registration:',result===true?'success':'not confirmed');}catch(e){console.error('Telegram webhook registration failed:',e.message);}
