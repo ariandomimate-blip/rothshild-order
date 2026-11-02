@@ -162,7 +162,7 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   const customerAddress=clean(req.body?.customerAddress,500);
   const orderNumber=clean(req.body?.orderNumber,40);
   const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(customerName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
+  if(customerName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||customerAddress.length<8||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
    return res.status(400).json({error:'Bitte Name, gültige E-Mail, vollständige Adresse, Bestellnummer und Warenkorb prüfen.'});
   }
   const items=[];
@@ -206,8 +206,9 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   });
   const tgData=await tg.json().catch(()=>({}));
   if(!tg.ok||tgData.ok!==true){
-   console.error('Telegram order notification failed:',tgData.description||tg.status);
-   return res.status(502).json({error:'Die Bestellnachricht konnte nicht an Telegram übermittelt werden.'});
+   console.error('Telegram order notification failed; email order was accepted:',tgData.description||tg.status);
+   // Email is the primary order channel; keep checkout successful if optional Telegram fails.
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent:true,telegramSent:false});
   }
   res.status(201).json({ok:true,orderNumber,total,items});
  }catch(e){
