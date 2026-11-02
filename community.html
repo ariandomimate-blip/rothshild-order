@@ -1,47 +1,66 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#090807">
-<meta name="description" content="Community gallery — moments of gathering, conversation, and shared interests.">
+<meta name="description" content="Community-Galerie mit Bildern und Video — ROTHSHILD Order of Light.">
 <link rel="stylesheet" href="/style.css">
 <title>Community · ROTHSHILD Order of Light</title>
 <style>
 .community-hero{padding:56px 5%;text-align:center;background:radial-gradient(ellipse at 50% 30%,#6c481e,#211509 45%,#080706 80%)}
 .community-hero p{max-width:680px;margin:15px auto 24px}
-.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;padding:30px 4%}
-.gallery figure{margin:0;border:1px solid #6d512b;background:#100c08;padding:10px}
-.gallery img,.gallery video{display:block;width:100%;height:280px;object-fit:cover;background:#21170c}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:18px;padding:30px 4%}
+.gallery figure{margin:0;border:1px solid #6d512b;background:#100c08;padding:10px;min-width:0}
+.gallery img,.gallery video{display:block;width:100%;height:clamp(230px,32vw,360px);object-fit:cover;background:#21170c;cursor:pointer}
+.gallery video{object-fit:contain}
 .gallery figcaption{font:12px Arial;color:#d3c5af;padding:12px 4px 5px;line-height:1.5}
 .back{display:inline-block;margin-top:18px}
+.viewer{position:fixed;inset:0;z-index:9999;background:#050403f2;display:none;align-items:center;justify-content:center;padding:4vw}
+.viewer.open{display:flex}.viewer img{max-width:92vw;max-height:88vh;object-fit:contain}
+.viewer button{position:absolute;top:18px;right:20px;background:#17130e;color:#e1c071;border:1px solid #8b6a30;border-radius:50%;font-size:28px;width:48px;height:48px}
+@media(max-width:600px){.community-hero{padding:38px 5%}.gallery{grid-template-columns:1fr;padding:22px 5%;gap:14px}}
 </style>
 </head>
 <body>
 <header>
 <a class="brand" href="/">♜ ROTHSHILD<small>ILLUMINATI · ORDER OF LIGHT</small></a>
-<button class="menu" id="menu" aria-label="Open menu">☰</button>
-<nav id="nav"><a href="/">Home</a><a href="/#forum">Forum</a><a href="/#wissen">Knowledge</a><a href="/community.html" aria-current="page">Community</a></nav>
+<button class="menu" id="menu" aria-label="Menü öffnen">☰</button>
+<nav id="nav"><a href="/">Start</a><a href="/#forum">Forum</a><a href="/#wissen">Wissen</a><a href="/community.html" aria-current="page">Community</a></nav>
 </header>
 <main>
 <section class="community-hero">
-<div class="eyebrow">MEETING · EXCHANGE · COMMUNITY</div>
+<div class="eyebrow">BEGEGNUNG · AUSTAUSCH · GEMEINSCHAFT</div>
 <h1>Community</h1>
-<p>A gallery of moments from gatherings, conversations, and events. Images are presented for illustrative purposes only; they do not establish or imply an official affiliation, endorsement, or partnership involving the people shown.</p>
-<a class="gold back" href="/#forum">GO TO THE FORUM</a>
+<p>Ein eigener Ort für die Bilder und Eindrücke unserer Community. Wähle ein Bild aus, um es in voller Größe anzusehen, oder starte das Video.</p>
+<a class="gold back" href="/#forum">ZUM FORUM</a>
 </section>
-<section aria-label="Community gallery">
+<section aria-label="Community-Bilder und Video">
 <div class="gallery">
-<figure><img src="/IMG_6334.jpeg" alt="Community gallery image" loading="lazy"><figcaption>Community gallery — shared moments.</figcaption></figure>
-<figure><img src="/IMG_6335.jpeg" alt="Community gallery image" loading="lazy"><figcaption>Community gallery — exchange and connection.</figcaption></figure>
-<figure><img src="/IMG_6336.jpeg" alt="Community gallery image" loading="lazy"><figcaption>Community gallery — a moment to reflect.</figcaption></figure>
-<figure><img src="/IMG_6337.jpeg" alt="Community gallery image" loading="lazy"><figcaption>Community gallery — symbols and stories.</figcaption></figure>
-<figure><img src="/IMG_6338.jpeg" alt="Community gallery image" loading="lazy"><figcaption>Community gallery — shared interests.</figcaption></figure>
-<figure><img src="/IMG_6339.jpeg" alt="Community gallery image" loading="lazy"><figcaption>Community gallery — visual highlights.</figcaption></figure>
-<figure><img src="/IMG_6374.jpeg" alt="Community gallery image" loading="lazy"><figcaption>Community gallery — reading and learning.</figcaption></figure>
-<figure class="video-figure"><video controls preload="metadata" poster="/IMG_6334.jpeg"><source src="/telegram_video.mp4" type="video/mp4">Your browser does not support this video.</video><figcaption>Community video — a visual moment from the gallery.</figcaption></figure>
+<figure><img src="/IMG_6334.jpeg" alt="Community-Eindruck 1" loading="lazy"><figcaption>Community · 01</figcaption></figure>
+<figure><img src="/IMG_6335.jpeg" alt="Community-Eindruck 2" loading="lazy"><figcaption>Community · 02</figcaption></figure>
+<figure><img src="/IMG_6336.jpeg" alt="Community-Eindruck 3" loading="lazy"><figcaption>Community · 03</figcaption></figure>
+<figure><img src="/IMG_6337.jpeg" alt="Community-Eindruck 4" loading="lazy"><figcaption>Community · 04</figcaption></figure>
+<figure><img src="/IMG_6338.jpeg" alt="Community-Eindruck 5" loading="lazy"><figcaption>Community · 05</figcaption></figure>
+<figure><img src="/IMG_6339.jpeg" alt="Community-Eindruck 6" loading="lazy"><figcaption>Community · 06</figcaption></figure>
+<figure><img src="/IMG_6374.jpeg" alt="Community-Eindruck 7" loading="lazy"><figcaption>Community · 07</figcaption></figure>
+<figure><img src="/IMG_6376.jpeg" alt="Community-Eindruck 8" loading="lazy"><figcaption>Community · 08</figcaption></figure>
+<figure><img src="/IMG_6377.jpeg" alt="Community-Eindruck 9" loading="lazy"><figcaption>Community · 09</figcaption></figure>
+<figure><img src="/IMG_6378.jpeg" alt="Community-Eindruck 10" loading="lazy"><figcaption>Community · 10</figcaption></figure>
+<figure><img src="/IMG_6382.jpeg" alt="Community-Eindruck 11" loading="lazy"><figcaption>Community · 11</figcaption></figure>
+<figure><img src="/IMG_6383.jpeg" alt="Community-Eindruck 12" loading="lazy"><figcaption>Community · 12</figcaption></figure>
+<figure class="video-figure"><video controls playsinline preload="metadata" poster="/IMG_6334.jpeg"><source src="/telegram_video.mp4" type="video/mp4">Dein Browser unterstützt dieses Video nicht.</video><figcaption>Community-Video</figcaption></figure>
 </div>
 </section>
 </main>
-<footer><b>♜ ROTHSHILD · ORDER OF LIGHT</b><span><a href="/">Home</a> · Contact · Legal notice · Privacy</span><small>Independent community project. No official connection to any family or organization is claimed.</small></footer>
-<script>document.getElementById('menu')?.addEventListener('click',()=>document.getElementById('nav')?.classList.toggle('open'));</script>
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Bildansicht"><button id="closeViewer" aria-label="Schließen">×</button><img id="viewerImage" alt=""></div>
+<footer><b>♜ ROTHSHILD · ORDER OF LIGHT</b><span><a href="/">Start</a> · Kontakt · Rechtliches · Datenschutz</span><small>Eigenständiges Community-Projekt. Keine offizielle Verbindung zu einer Familie oder Organisation wird behauptet.</small></footer>
+<script>
+document.getElementById('menu')?.addEventListener('click',()=>document.getElementById('nav')?.classList.toggle('open'));
+const viewer=document.getElementById('viewer'),viewerImage=document.getElementById('viewerImage');
+document.querySelectorAll('.gallery img').forEach(img=>img.addEventListener('click',()=>{viewerImage.src=img.src;viewerImage.alt=img.alt;viewer.classList.add('open')}));
+function closeViewer(){viewer.classList.remove('open');viewerImage.removeAttribute('src')}
+document.getElementById('closeViewer')?.addEventListener('click',closeViewer);
+viewer?.addEventListener('click',e=>{if(e.target===viewer)closeViewer()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeViewer()});
+</script>
 </body></html>
