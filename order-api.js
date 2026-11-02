@@ -33,7 +33,7 @@ const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
  txid text, status text NOT NULL DEFAULT 'awaiting_txid',
  created_at timestamptz NOT NULL DEFAULT now(), paid_at timestamptz
 )`;
-async function init(){if(pool)await pool.query(orderTable);}
+async function init(){if(pool){await pool.query(orderTable);await pool.query('ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS customer_address text');}}
 async function tg(method,payload){
  if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('TELEGRAM_BOT_TOKEN is not configured in the backend environment.');
  const r=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -45,9 +45,9 @@ const productKeyboard=()=>({inline_keyboard:[...catalog.map(p=>[{text:p.name+' �
 function cartKeyboard(cart){const rows=catalog.filter(p=>cart[p.id]).map(p=>[{text:'− '+p.name,callback_data:'dec:'+p.id},{text:String(cart[p.id])+'×',callback_data:'noop'},{text:'+ '+p.name,callback_data:'add:'+p.id}]);rows.push([{text:'Zur Kasse',callback_data:'checkout'}],[{text:'Produkte',callback_data:'menu'}]);return {inline_keyboard:rows};}
 function cartRows(cart){return catalog.filter(p=>cart[p.id]).map(p=>({...p,quantity:cart[p.id],lineTotal:p.price*cart[p.id]}));}
 function cartText(cart){const rows=cartRows(cart);if(!rows.length)return 'Der Warenkorb ist leer. Wähle Produkte:';return '🛒 Warenkorb\n'+rows.map(p=>p.name+' × '+p.quantity+' — '+money(p.lineTotal)).join('\n')+'\n\nGesamt: '+money(rows.reduce((a,p)=>a+p.lineTotal,0));}
-async function saveOrder(order){if(!pool)throw new Error('DATABASE_URL muss im Backend gesetzt sein, damit Bestellungen dauerhaft gespeichert werden.');await pool.query('INSERT INTO shop_orders(order_number,customer_name,customer_email,telegram_chat_id,items,total,status) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)',[order.id,order.name,order.email||null,order.chatId||null,JSON.stringify(order.items),order.total,order.status||'awaiting_txid']);}
+async function saveOrder(order){if(!pool)throw new Error('DATABASE_URL muss im Backend gesetzt sein, damit Bestellungen dauerhaft gespeichert werden.');await pool.query('INSERT INTO shop_orders(order_number,customer_name,customer_email,customer_address,telegram_chat_id,items,total,status) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8)',[order.id,order.name,order.email||null,order.address||null,order.chatId||null,JSON.stringify(order.items),order.total,order.status||'awaiting_txid']);}
 async function getOrder(id){if(!pool)return null;const r=await pool.query('SELECT * FROM shop_orders WHERE order_number=$1',[id]);return r.rows[0]||null;}
-async function adminOrder(order){const lines=order.items.map(i=>i.name+' × '+i.quantity+' — '+money(i.lineTotal)).join('\n');return tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'🛍 Neue Bestellung\n'+order.id+'\nKunde: '+order.name+'\nE-Mail: '+(order.email||'nicht angegeben')+'\n\n'+lines+'\n\nGesamt: '+money(order.total)+'\nStatus: TXID/Zahlung offen.',reply_markup:{inline_keyboard:[[{text:'TXID prüfen / Zahlung bestätigen',callback_data:'review:'+order.id}]]}});}
+async function adminOrder(order){const lines=order.items.map(i=>i.name+' × '+i.quantity+' — '+money(i.lineTotal)).join('\n');return tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'🛍 Neue Bestellung\n'+order.id+'\nKunde: '+order.name+'\nE-Mail: '+(order.email||'nicht angegeben')+'\nAdresse: '+(order.address||'nicht angegeben')+'\n\n'+lines+'\n\nGesamt: '+money(order.total)+'\nStatus: TXID/Zahlung offen.',reply_markup:{inline_keyboard:[[{text:'TXID prüfen / Zahlung bestätigen',callback_data:'review:'+order.id}]]}});}
 app.get('/api/health',(req,res)=>res.json({ok:true,storage:pool?'postgres':'unavailable'}));
 app.post('/api/telegram/webhook',async(req,res)=>{
  try{
@@ -102,10 +102,10 @@ app.post('/api/telegram/webhook',async(req,res)=>{
 });
 app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8}),async(req,res)=>{
  try{
-  const name=clean(req.body?.customerName,100),email=clean(req.body?.customerEmail,254).toLowerCase(),raw=Array.isArray(req.body?.items)?req.body.items:[];
+  const name=clean(req.body?.customerName,100),email=clean(req.body?.customerEmail,254).toLowerCase(),address=clean(req.body?.customerAddress,500),raw=Array.isArray(req.body?.items)?req.body.items:[];
   if(name.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||raw.length<1||raw.length>20)return res.status(400).json({error:'Name, gültige E-Mail und Warenkorb erforderlich.'});
   const items=[];for(const item of raw){const p=catalog.find(p=>p.name===clean(item.name,100)),qty=Number(item.quantity);if(!p||!Number.isInteger(qty)||qty<1||qty>25)return res.status(400).json({error:'Ungültiges Produkt oder Menge.'});items.push({...p,quantity:qty,lineTotal:p.price*qty});}
-  const total=items.reduce((s,i)=>s+i.lineTotal,0),id=orderId(),order={id,name,email,chatId:null,items,total,status:'awaiting_txid'};
+  const total=items.reduce((s,i)=>s+i.lineTotal,0),id=orderId(),order={id,name,email,address,chatId:null,items,total,status:'awaiting_txid'};
   await saveOrder(order);await adminOrder(order);res.status(201).json({ok:true,orderNumber:id,total,status:order.status,txidUrl:origin+'/api/shop/txid/'+id});
  }catch(e){console.error('Web order failed:',e.message);res.status(500).json({error:'Bestellung konnte nicht gespeichert oder übermittelt werden.'});}
 });
@@ -117,4 +117,11 @@ app.get('/api/shop/invoice/:id',async(req,res)=>{try{const o=await getOrder(clea
 function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 const port=Number(process.env.PORT||3000);
 await init();
-app.listen(port,'0.0.0.0',()=>console.log('ROTHSHILD Telegram order API listening on '+port));
+app.listen(port,'0.0.0.0',()=>{console.log('ROTHSHILD Telegram order API listening on '+port);void configureTelegramWebhook();});
+async function configureTelegramWebhook(){
+ if(!process.env.TELEGRAM_BOT_TOKEN)return console.warn('Telegram webhook not configured: TELEGRAM_BOT_TOKEN is missing.');
+ const base=(process.env.RENDER_EXTERNAL_URL||process.env.TELEGRAM_WEBHOOK_BASE_URL||'').replace(/\\/$/,'');
+ if(!base)return console.warn('Telegram webhook not configured: set RENDER_EXTERNAL_URL or TELEGRAM_WEBHOOK_BASE_URL to this API service URL.');
+ const url=base+'/api/telegram/webhook';
+ try{const result=await tg('setWebhook',{url,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET||undefined,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook registration:',result===true?'success':'not confirmed');}catch(e){console.error('Telegram webhook registration failed:',e.message);}
+}
