@@ -162,30 +162,9 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
    'Name: '+customerName,
    'E-Mail: '+customerEmail,
    '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — 
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
-app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
-// Provision the requested administrator account only if that email already registered.
-if(process.env.DATABASE_URL){
- const adminEmail='gaussa72@gmail.com';
- const admin=await pool.query("UPDATE users SET role='admin',status='approved' WHERE lower(email)=lower($1) RETURNING id",[adminEmail]);
- if(admin.rowCount) console.log('Administrator role enabled for configured account.');
- else console.warn('Requested admin email has not registered yet; no account created.');
-}
-const port=Number(process.env.PORT||3000);
-const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
-if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
-app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
-+item.lineTotal.toFixed(2)),
+   ...items.map(item=>item.name+' × '+item.quantity+' — '+item.lineTotal.toFixed(2)),
    '',
-   'Warenwert: 
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
-app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
-const port=Number(process.env.PORT||3000);
-const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
-if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
-app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
-+total.toFixed(2),
+   'Warenwert: '+total.toFixed(2),
    '',
    'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
    'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
@@ -195,7 +174,7 @@ app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
   }
   const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
    method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\\n'),disable_web_page_preview:true})
+   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\n'),disable_web_page_preview:true})
   });
   const tgData=await tg.json().catch(()=>({}));
   if(!tg.ok||tgData.ok!==true){
