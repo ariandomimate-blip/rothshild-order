@@ -200,7 +200,7 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
 });
 
 // Serve community gallery images and video from repository-root assets.
-for (const asset of ['IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','telegram_video.mp4']) {
+for (const asset of ['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']) {
   app.get('/'+asset, (req,res)=>res.sendFile(path.join(__dirname,'..',asset)));
 }
 app.use(express.static(path.join(__dirname,'../public')));
