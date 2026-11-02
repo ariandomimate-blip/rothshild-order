@@ -1,125 +1,20 @@
-(()=>{
-'use strict';
-const shop=document.querySelector('#shop');
-if(!shop||shop.dataset.cartReady)return;
-shop.dataset.cartReady='1';
-const cards=[...shop.querySelectorAll(':scope > .cols > .panel')].filter(card=>card.querySelector('.product-art img'));
-const cart=new Map();
-let activeOrderNumber=null;
-const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const money=value=>'$'+Number(value).toFixed(2);
-function orderNumber(){
- if(activeOrderNumber)return activeOrderNumber;
- const bytes=new Uint8Array(3);
- if(window.crypto?.getRandomValues)window.crypto.getRandomValues(bytes);else for(let i=0;i<3;i++)bytes[i]=Math.floor(Math.random()*256);
- const suffix=[...bytes].map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();
- activeOrderNumber='RO-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+suffix;
- return activeOrderNumber;
-}
-function items(){return [...cart.values()]}
-function total(){return items().reduce((sum,item)=>sum+item.price*item.quantity,0)}
-const cartBox=document.createElement('section');
-cartBox.className='cart-box';
-cartBox.id='shopping-cart';
-cartBox.innerHTML=`
-<h3>Warenkorb</h3><div id="cart-lines">Noch keine Produkte ausgewählt.</div>
-<p><strong>Warenwert: <span id="cart-total">$0.00</span></strong></p>
-<p class="muted">Versandkosten und endgültiger Preis werden vor einer Zahlungsaufforderung bestätigt. Diese Anfrage ist noch keine Zahlung.</p>
-<form class="cart-form" id="cart-customer">
-<label>Name<input name="name" autocomplete="name" required minlength="2" placeholder="Vor- und Nachname"></label>
-<label>E-Mail<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label>
-<div class="cart-buttons">
-<button class="gold" type="button" id="cart-email">Bestellnachricht per E-Mail öffnen</button>\n<button class="gold" type="button" id="go-checkout">Zur Kasse</button>
-<button class="gold" type="button" id="cart-telegram">Bestellung an Telegram übermitteln</button>
-<a class="outline" href="https://t.me/Rotshild_Adriano" target="_blank" rel="noopener noreferrer">Telegram-Bot öffnen</a>
-</div>
-<p class="cart-status" id="cart-status" role="status" aria-live="polite"></p>
-</form>`;
-const notice=shop.querySelector('.notice');
-if(notice)shop.insertBefore(cartBox,notice);else shop.append(cartBox);
-function render(){
- const lines=document.querySelector('#cart-lines');
- if(!cart.size){lines.textContent='Noch keine Produkte ausgewählt.';}
- else lines.innerHTML=items().map(item=>`<div class="cart-row"><span>${escapeHtml(item.name)}</span><div class="cart-actions"><button type="button" data-dec="${escapeHtml(item.name)}" aria-label="Menge verringern">−</button><span>${item.quantity}</span><button type="button" data-inc="${escapeHtml(item.name)}" aria-label="Menge erhöhen">+</button></div><strong class="cart-price">${money(item.price*item.quantity)}</strong></div>`).join('');
- document.querySelector('#cart-total').textContent=money(total());
- lines.querySelectorAll('[data-inc]').forEach(button=>button.addEventListener('click',()=>change(button.dataset.inc,1)));
- lines.querySelectorAll('[data-dec]').forEach(button=>button.addEventListener('click',()=>change(button.dataset.dec,-1)));
- document.querySelector('#cart-status').textContent='';
-}
-function change(name,delta){
- const item=cart.get(name);if(!item)return;
- item.quantity+=delta;if(item.quantity<1)cart.delete(name);else item.quantity=Math.min(25,item.quantity);
- activeOrderNumber=null;render();
-}
-cards.forEach(card=>{
- const name=card.querySelector('h3')?.textContent.trim();
- const priceText=card.querySelector('strong')?.textContent||'';
- const price=Number(priceText.replace(/[^0-9.]/g,''));
- if(!name||!Number.isFinite(price)||price<=0)return;
- const button=document.createElement('button');
- button.type='button';button.className='cart-add';button.textContent='In den Warenkorb';
- button.addEventListener('click',()=>{
-  const item=cart.get(name)||{name,price,quantity:0};
-  item.quantity=Math.min(25,item.quantity+1);cart.set(name,item);activeOrderNumber=null;render();
-  document.querySelector('#cart-status').textContent=name+' wurde hinzugefügt.';
- });
- const holder=document.createElement('p');holder.append(button);card.append(holder);
-});
-function orderText(id,name,email){
- return [
-  'Bestellanfrage – ROTHSHILD · Order of Light','',
-  'Bestellnummer: '+id,'Name: '+name,'E-Mail: '+email,'',
-  ...items().map(item=>item.name+' × '+item.quantity+' — '+money(item.price*item.quantity)),
-  '','Warenwert: '+money(total()),'',
-  'Bitte Verfügbarkeit, Versandkosten und Endpreis bestätigen.',
-  'Dies ist eine Bestellanfrage, keine Zahlungsbestätigung.'
- ].join('\n');
-}
-function customer(){
- const form=document.querySelector('#cart-customer');
- if(!cart.size){document.querySelector('#cart-status').textContent='Bitte zuerst Produkte in den Warenkorb legen.';return null;}
- if(!form.reportValidity())return null;
- const data=new FormData(form);
- return {name:String(data.get('name')).trim(),email:String(data.get('email')).trim()};
-}
-document.querySelector('#go-checkout').addEventListener('click',()=>{
- if(!cart.size){document.querySelector('#cart-status').textContent='Bitte zuerst Produkte auswählen.';return;}
- sessionStorage.setItem('roths-order-draft',JSON.stringify({items:items().map(item=>({name:item.name,price:item.price,quantity:item.quantity}))}));
- location.href='/checkout.html';
-});
-document.querySelector('#cart-email').addEventListener('click',()=>{
- const c=customer();if(!c)return;
- const id=orderNumber(),subject='Bestellanfrage '+id;
- const body=orderText(id,c.name,c.email);
- window.location.href='mailto:adiphenex@gmail.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
- document.querySelector('#cart-status').textContent='E-Mail-Entwurf mit Bestellnummer '+id+' wurde angefordert. Bitte im E-Mail-Programm noch absenden.';
-});
-document.querySelector('#cart-telegram').addEventListener('click',async()=>{
- const c=customer();if(!c)return;
- const id=orderNumber(),status=document.querySelector('#cart-status'),button=document.querySelector('#cart-telegram');
- button.disabled=true;status.textContent='Übermittle Bestellnummer '+id+' an Telegram …';
- try{
-  const response=await fetch('https://rothshild-order-api.onrender.com/api/shop/orders',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:id,customerName:c.name,customerEmail:c.email,items:items().map(item=>({name:item.name,quantity:item.quantity}))})});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(data.error||'Telegram-Übermittlung fehlgeschlagen.');
-  status.textContent='Bestellung '+data.orderNumber+' wurde an Telegram übermittelt. Warenwert: '+money(data.total)+'. Zahlung noch offen.';
-  const txidBox=document.createElement('div');
-  txidBox.className='txid-entry';
-  txidBox.innerHTML='<label>Transaktions-ID (TXID)<input id="shop-txid" maxlength="300" required placeholder="TXID nach der Zahlungsanweisung"></label><button class="gold" type="button" id="submit-shop-txid">TXID übermitteln</button><p class="muted">Die Zahlung gilt erst nach Prüfung durch die Administration als bestätigt.</p>';
-  status.appendChild(txidBox);
-  document.querySelector('#submit-shop-txid').addEventListener('click',async()=>{
-   const txid=document.querySelector('#shop-txid').value.trim(),txButton=document.querySelector('#submit-shop-txid');
-   if(txid.length<8){status.insertAdjacentText('beforeend',' Bitte eine vollständige TXID eingeben.');return;}
-   txButton.disabled=true;
-   try{
-    const txResponse=await fetch('https://rothshild-order-api.onrender.com/api/shop/txid/'+encodeURIComponent(data.orderNumber),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({txid})});
-    const txData=await txResponse.json().catch(()=>({}));
-    if(!txResponse.ok)throw new Error(txData.error||'TXID konnte nicht übermittelt werden.');
-    txidBox.innerHTML='<p>TXID wurde zur Prüfung an die Administration gesendet. Zahlung noch nicht bestätigt.</p>';
-   }catch(e){status.insertAdjacentText('beforeend',' '+e.message);txButton.disabled=false;}
-  });
- }catch(error){status.textContent=error.message;}
- finally{button.disabled=false;}
-});
+(()=>{'use strict';
+const shop=document.querySelector('#shop');if(!shop||shop.dataset.cartReady)return;shop.dataset.cartReady='1';
+const cards=[...shop.querySelectorAll(':scope > .cols > .panel')].filter(c=>c.querySelector('.product-art img'));
+const cart=new Map();let orderId=null;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=v=>'$'+Number(v).toFixed(2),items=()=>[...cart.values()],total=()=>items().reduce((s,i)=>s+i.price*i.quantity,0);
+const header=document.querySelector('header');const cartBtn=document.createElement('button');cartBtn.className='gold header-cart';cartBtn.type='button';cartBtn.id='header-cart';cartBtn.innerHTML='🛒 Warenkorb <span id="header-cart-count">0</span>';header.append(cartBtn);
+const backdrop=document.createElement('div');backdrop.className='cart-backdrop';backdrop.id='cart-backdrop';
+const drawer=document.createElement('aside');drawer.className='cart-drawer';drawer.id='cart-drawer';drawer.setAttribute('aria-label','Warenkorb');drawer.innerHTML='<div class="cart-drawer-head"><h2>Warenkorb</h2><button type="button" id="cart-close" aria-label="Schließen">×</button></div><div id="drawer-lines">Noch keine Produkte.</div><p class="cart-drawer-total">Warenwert: <strong id="drawer-total">$0.00</strong></p><p class="muted">Versandkosten und Endpreis werden vor Bestätigung mitgeteilt.</p><button class="gold" id="drawer-checkout" type="button">Weiter zur Kasse</button><p id="drawer-status" role="status"></p>';
+document.body.append(backdrop,drawer);
+const css=document.createElement('style');css.textContent='.header-cart{margin-left:auto;white-space:nowrap;cursor:pointer}.cart-backdrop{display:none;position:fixed;inset:0;background:#0009;z-index:1000}.cart-drawer{position:fixed;z-index:1001;right:0;top:0;height:100dvh;width:min(440px,94vw);box-sizing:border-box;padding:22px;background:#100e0a;color:#eee4d0;border-left:1px solid #8b713e;transform:translateX(105%);transition:transform .22s;overflow:auto}.cart-drawer.open{transform:translateX(0)}.cart-backdrop.open{display:block}.cart-drawer-head{display:flex;align-items:center;justify-content:space-between}.cart-drawer-head h2{color:#d6b66d}.cart-drawer-head button{font-size:32px;background:none;color:#e7ca82;border:0}.cart-drawer .cart-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:12px 0;border-bottom:1px solid #3b3224}.cart-drawer .cart-actions{display:flex;gap:8px;align-items:center}.cart-drawer .cart-actions button{background:#17130d;color:#e7ca82;border:1px solid #8b713e;padding:7px 10px}.cart-drawer-total{margin-top:20px}.cart-drawer #drawer-checkout{width:100%;padding:14px}.cart-drawer #drawer-status{color:#d6b66d}.cart-add{cursor:pointer;border:1px solid #8b713e;background:#17130d;color:#e7ca82;padding:10px 14px}.cart-box{display:none!important}';
+document.head.append(css);
+function open(){drawer.classList.add('open');backdrop.classList.add('open');drawer.setAttribute('aria-modal','true')}function close(){drawer.classList.remove('open');backdrop.classList.remove('open')}
+cartBtn.onclick=open;backdrop.onclick=close;drawer.querySelector('#cart-close').onclick=close;
+function render(){const lines=drawer.querySelector('#drawer-lines');lines.innerHTML=cart.size?items().map(i=>'<div class="cart-row"><span>'+esc(i.name)+'<br><small>'+money(i.price)+'</small></span><div class="cart-actions"><button type="button" data-dec="'+esc(i.name)+'">−</button><span>'+i.quantity+'</span><button type="button" data-inc="'+esc(i.name)+'">+</button></div></div>').join(''):'Noch keine Produkte hinzugefügt.';drawer.querySelector('#drawer-total').textContent=money(total());drawer.querySelector('#header-cart-count').textContent=items().reduce((n,i)=>n+i.quantity,0);lines.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>change(b.dataset.inc,1));lines.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>change(b.dataset.dec,-1))}
+function change(n,d){const i=cart.get(n);if(!i)return;i.quantity+=d;if(i.quantity<1)cart.delete(n);else i.quantity=Math.min(25,i.quantity);orderId=null;render()}
+cards.forEach(card=>{const name=card.querySelector('h3')?.textContent.trim(),price=Number((card.querySelector('strong')?.textContent||'').replace(/[^0-9.]/g,''));if(!name||!price)return;const b=document.createElement('button');b.className='cart-add';b.type='button';b.textContent='In den Warenkorb';b.onclick=()=>{const i=cart.get(name)||{name,price,quantity:0};i.quantity=Math.min(25,i.quantity+1);cart.set(name,i);orderId=null;render();drawer.querySelector('#drawer-status').textContent=name+' hinzugefügt.';open()};const p=document.createElement('p');p.append(b);card.append(p)});
+drawer.querySelector('#drawer-checkout').onclick=()=>{if(!cart.size){drawer.querySelector('#drawer-status').textContent='Bitte zuerst Produkte hinzufügen.';return}sessionStorage.setItem('roths-order-draft',JSON.stringify({items:items().map(i=>({...i}))}));location.href='/checkout.html'};
 render();
 })();
