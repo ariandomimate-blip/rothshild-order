@@ -209,6 +209,10 @@ app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
  }
 });
 
+// Serve only the community gallery assets stored in the repository root.
+for (const asset of ['IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg']) {
+  app.get('/'+asset, (req,res)=>res.sendFile(path.join(__dirname,'..',asset)));
+}
 app.use(express.static(path.join(__dirname,'../public')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
