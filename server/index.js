@@ -25,19 +25,33 @@ if(prod && !process.env.APP_ORIGIN) throw new Error('Production startup blocked:
 if(prod && !process.env.APP_ORIGIN.startsWith('https://')) throw new Error('Production startup blocked: APP_ORIGIN must use HTTPS.');
 // Render terminates TLS at its edge; trust only its immediate proxy for secure-cookie/request metadata.
 app.set('trust proxy',1);
-// Protect cookie-authenticated state changes against cross-site request forgery.
-// In production, browser writes must originate from the exact configured site origin.
+// Render terminates TLS at its edge. Compare writes against the actual request origin
+// (the deployed host) and the optional configured canonical origin to avoid false 403s
+// when a Render alias/custom domain is used, while still rejecting cross-site requests.
+function normalizedOrigin(value){try{return new URL(value).origin;}catch{return null;}}
+function isAllowedBrowserOrigin(value,req){
+  const incoming=normalizedOrigin(value);
+  if(!incoming)return false;
+  const actual=normalizedOrigin(req.protocol+'://'+req.get('host'));
+  const configured=normalizedOrigin(process.env.APP_ORIGIN||'');
+  return incoming===actual || Boolean(configured&&incoming===configured);
+}
 app.use((req,res,next)=>{
   if(!['POST','PUT','PATCH','DELETE'].includes(req.method)) return next();
-  // Telegram webhook authenticates requests with its secret-token header, not a browser Origin.
+  // Telegram webhook authenticates requests with its secret-token header, not browser Origin.
   if(req.path==='/api/telegram/webhook') return next();
   const origin=req.get('origin');
-  if(prod && (!origin || origin!==process.env.APP_ORIGIN)) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
-  if(origin && process.env.APP_ORIGIN && origin!==process.env.APP_ORIGIN) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
+  if(prod && (!origin || !isAllowedBrowserOrigin(origin,req))) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
+  if(origin && !isAllowedBrowserOrigin(origin,req)) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
   next();
 });
 app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"script-src":["'self'"],"style-src":["'self'"],"img-src":["'self'","data:"],"connect-src":["'self'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
-app.use(cors({origin:process.env.APP_ORIGIN,credentials:true}));
+app.use(cors({origin:(origin,callback)=>{
+  if(!origin)return callback(null,false);
+  const incoming=normalizedOrigin(origin),configured=normalizedOrigin(process.env.APP_ORIGIN||'');
+  if(incoming&&(incoming===configured))return callback(null,true);
+  return callback(null,false);
+},credentials:true}));
 app.use(express.json({limit:'2mb'})); app.use(cookieParser());
 app.use('/api/auth',rateLimit({windowMs:15*60*1000,limit:8,standardHeaders:true,legacyHeaders:false,message:{error:'Too many authentication attempts. Please wait and try again.'}}));
 app.use('/api/admin',rateLimit({windowMs:60*1000,limit:30,standardHeaders:true,legacyHeaders:false}));
