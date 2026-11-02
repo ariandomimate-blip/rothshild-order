@@ -142,10 +142,11 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
  try{
   const customerName=clean(req.body?.customerName,100);
   const customerEmail=clean(req.body?.customerEmail,254).toLowerCase();
+  const customerAddress=clean(req.body?.customerAddress,500);
   const orderNumber=clean(req.body?.orderNumber,40);
   const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
   if(customerName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, Bestellnummer und Warenkorb prüfen.'});
+   return res.status(400).json({error:'Bitte Name, gültige E-Mail, vollständige Adresse, Bestellnummer und Warenkorb prüfen.'});
   }
   const items=[];
   for(const item of rawItems){
@@ -160,7 +161,7 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
    'Neue Shop-Bestellanfrage',
    'Bestellnummer: '+orderNumber,
    'Name: '+customerName,
-   'E-Mail: '+customerEmail,
+   'E-Mail: '+customerEmail,\n   'Lieferadresse: '+customerAddress,
    '',
    ...items.map(item=>item.name+' × '+item.quantity+' — '+item.lineTotal.toFixed(2)),
    '',
@@ -169,6 +170,14 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
    'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
    'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
   ];
+  // Send the full order details to the configured shop mailbox.
+  if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
+   const nodemailer=(await import('nodemailer')).default;
+   const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:'Shop-Bestellung '+orderNumber,text:lines.join('\\n')});
+  } else {
+   return res.status(503).json({error:'E-Mail-Versand nicht konfiguriert. SMTP-Einstellungen in Render ergänzen.'});
+  }
   if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
    return res.status(503).json({error:'Telegram-Versand noch nicht konfiguriert. In Render TELEGRAM_BOT_TOKEN und TELEGRAM_ADMIN_CHAT_ID setzen.'});
   }
