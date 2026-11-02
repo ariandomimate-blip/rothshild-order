@@ -29,6 +29,8 @@ app.set('trust proxy',1);
 // In production, browser writes must originate from the exact configured site origin.
 app.use((req,res,next)=>{
   if(!['POST','PUT','PATCH','DELETE'].includes(req.method)) return next();
+  // Telegram webhook authenticates requests with its secret-token header, not a browser Origin.
+  if(req.path==='/api/telegram/webhook') return next();
   const origin=req.get('origin');
   if(prod && (!origin || origin!==process.env.APP_ORIGIN)) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
   if(origin && process.env.APP_ORIGIN && origin!==process.env.APP_ORIGIN) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
