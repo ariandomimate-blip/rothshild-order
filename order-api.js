@@ -58,11 +58,11 @@ app.post('/api/telegram/webhook',async(req,res)=>{
   if(msg?.text){
    const chat=String(msg.chat.id),text=clean(msg.text,1000);
    let session=await getSession(chat);
-   if(text==='/start'||text==='/menu'){if(['name','email','txid'].includes(session.state)){const prompt=session.state==='name'?'Bitte gib deinen vollständigen Namen ein.':session.state==='email'?'Bitte sende deine E-Mail-Adresse oder -.':'Deine Bestellung '+(session.pending_order||'')+' ist noch offen. Sende nach Zahlung die TXID.';await tg('sendMessage',{chat_id:msg.chat.id,text:'Dein Checkout bleibt gespeichert.\\n'+prompt,reply_markup:cartKeyboard(session.cart)});}else{session.state='cart';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Willkommen im Shop. Wähle Produkte; der endgültige Preis und die Zahlung werden separat bestätigt.',reply_markup:productKeyboard()});}}
+   if(text==='/start'||text==='/menu'){if(['name','email','txid'].includes(session.state)){const prompt=session.state==='name'?'Bitte gib deinen vollständigen Namen ein.':session.state==='email'?'Bitte sende deine E-Mail-Adresse oder -.':'Deine Bestellung '+(session.pending_order||'')+' ist noch offen. Sende nach Zahlung die TXID.';await tg('sendMessage',{chat_id:msg.chat.id,text:'Dein Checkout bleibt gespeichert.\n'+prompt,reply_markup:cartKeyboard(session.cart)});}else{session.state='cart';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Willkommen im Shop. Wähle Produkte; der endgültige Preis und die Zahlung werden separat bestätigt.',reply_markup:productKeyboard()});}}
    else if(session.state==='name'){
     if(text.length<2){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein.'});}
-    else {session.name=text;session.state='email';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
-   }else if(session.state==='email'||(session.state!=='name'&&session.state!=='txid'&&Boolean(session.customer_name)&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(text))){
+    else {session.customer_name=text;session.state='email';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
+   }else if(session.state==='email'||(session.state!=='name'&&session.state!=='txid'&&Boolean(session.customer_name)&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))){
     const email=text==='-'?'':text.toLowerCase();
     if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){await tg('sendMessage',{chat_id:msg.chat.id,text:'Die E-Mail sieht ungültig aus. Bitte erneut eingeben oder „-“ senden.'});}
     else {
