@@ -52,4 +52,4 @@ app.post('/api/conversations/:id/messages',auth,async(req,res)=>{const ok=await 
 app.use(express.static(path.join(__dirname,'../public')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
-const port=Number(process.env.PORT||3000);app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
+const port=Number(process.env.PORT||3000);\nq('CREATE TABLE IF NOT EXISTS profile_posts (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, body TEXT NOT NULL CHECK (char_length(body) <= 1800), created_at TIMESTAMPTZ NOT NULL DEFAULT now())').then(()=>q('CREATE INDEX IF NOT EXISTS profile_posts_author_created_idx ON profile_posts(author_id,created_at DESC)')).then(()=>app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`))).catch(e=>{console.error('Database initialization failed',e);process.exit(1)});
