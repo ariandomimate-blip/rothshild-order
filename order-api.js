@@ -43,7 +43,14 @@ async function tg(method,payload){
 }
 const productKeyboard=()=>({inline_keyboard:[...catalog.map(p=>[{text:p.name+' · '+money(p.price),callback_data:'add:'+p.id}]),[{text:'🛒 Warenkorb',callback_data:'cart'}]]});
 function cartKeyboard(cart){const rows=catalog.filter(p=>cart[p.id]).map(p=>[{text:'− '+p.name,callback_data:'dec:'+p.id},{text:String(cart[p.id])+'×',callback_data:'noop'},{text:'+ '+p.name,callback_data:'add:'+p.id}]);rows.push([{text:'Zur Kasse',callback_data:'checkout'}],[{text:'Produkte',callback_data:'menu'}],[{text:'Mitgliedschaftsverfahren',callback_data:'membership:start'}]);return {inline_keyboard:rows};}
-function welcomeKeyboard(){return {inline_keyboard:[[{text:'🛍 Shop öffnen',callback_data:'menu'}],[{text:'Mitgliedschaftsverfahren',callback_data:'membership:start'}],[{text:'🌐 Website öffnen',url:origin}]]};}
+function welcomeKeyboard(){return {inline_keyboard:[
+ [{text:'🛍 Shop & Produkte',callback_data:'menu'}],
+ [{text:'🧾 Bestellung / TXID',callback_data:'order:txid'}],
+ [{text:'👑 Mitgliedschaft beantragen',callback_data:'membership:start'}],
+ [{text:'📄 Bewerbungsportal öffnen',url:'https://rothshild-application-portal.onrender.com'}],
+ [{text:'💬 Support kontaktieren',url:'https://t.me/Rothshild_Adriano'}],
+ [{text:'🌐 Website öffnen',url:origin}]
+]};}
 const applicationPrompts={membership_name:'Bitte gib deinen vollständigen Namen ein.',membership_email:'Bitte sende deine E-Mail-Adresse.',membership_address:'Bitte gib deine vollständige Anschrift ein.',membership_goals:'Welche persönlichen Ziele möchtest du erreichen?',membership_motivation:'Warum möchtest du dich bewerben?'};
 function applicationMessage(a){return '📩 Neue Mitgliedschaftsbewerbung\nName: '+a.full_name+'\nE-Mail: '+a.email+'\nAnschrift: '+a.address+'\nPersönliche Ziele: '+a.goals+'\nMotivation: '+a.motivation;}
 function cartRows(cart){return catalog.filter(p=>cart[p.id]).map(p=>({...p,quantity:cart[p.id],lineTotal:p.price*cart[p.id]}));}
@@ -61,14 +68,42 @@ app.post('/api/telegram/webhook',async(req,res)=>{
   if(msg?.text){
    const chat=String(msg.chat.id),text=clean(msg.text,1000);
    let session=await getSession(chat);
-   if(text==='/start'||text==='/menu'){if(session.state.startsWith('membership_')){await tg('sendMessage',{chat_id:msg.chat.id,text:'Deine Mitgliedschaftsbewerbung ist noch offen.\n'+(applicationPrompts[session.state]||'Bitte fahre mit deiner Bewerbung fort.'),reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}else if(['name','email','txid'].includes(session.state)){const prompt=session.state==='name'?'Bitte gib deinen vollständigen Namen ein.':session.state==='email'?'Bitte sende deine E-Mail-Adresse oder -.':'Deine Bestellung '+(session.pending_order||'')+' ist noch offen. Sende nach Zahlung die TXID.';await tg('sendMessage',{chat_id:msg.chat.id,text:'Dein Checkout bleibt gespeichert.\n'+prompt,reply_markup:cartKeyboard(session.cart)});}else{session.state='cart';await saveSession(session);const welcome='Willkommen bei ROTHSHILD · Order of Light.\nWähle den Shop oder starte das Mitgliedschaftsverfahren. Bewerbungen werden zur Prüfung an die Administration übermittelt.';const imageUrl=process.env.TELEGRAM_WELCOME_IMAGE_URL;if(imageUrl){await tg('sendPhoto',{chat_id:msg.chat.id,photo:imageUrl,caption:welcome,reply_markup:welcomeKeyboard()});}else{await tg('sendMessage',{chat_id:msg.chat.id,text:welcome,reply_markup:welcomeKeyboard()});}}}
+   if(text==='/start'||text==='/menu'){
+    const activeNote=session.state.startsWith('membership_')
+      ? '\n\n📝 Deine Mitgliedschaftsbewerbung ist noch offen. Nächste Angabe: '+(applicationPrompts[session.state]||'Bitte fahre fort.')
+      : ['name','email'].includes(session.state)
+        ? '\n\n🛒 Dein Checkout ist gespeichert. Bitte sende die angeforderte Angabe, um fortzufahren.'
+        : session.state==='txid'&&session.pending_order
+          ? '\n\n🧾 Deine Bestellung '+session.pending_order+' ist offen. Nutze „Bestellung / TXID“, um die Transaktions-ID einzureichen.'
+          : '';
+    const welcome='👑 WILLKOMMEN IM HOUSE OF ROTHSCHILD\n\nWillkommen im Telegram-Service des Rothshild-Webshops. Hier findest du Produkte, kannst Bestellungen verwalten, eine Bitcoin-TXID zur Prüfung übermitteln und Mitgliedschaftsanfragen einreichen.\n\n🛍 Shop & Bestellungen\n💳 Bitcoin-Zahlung und TXID-Prüfung\n📄 Rechnung nach bestätigter Zahlung\n📝 Mitgliedschaft und Bewerbungsportal\n💬 Support über @Rothshild_Adriano\n\nWähle eine Option unten. Zahlungen werden ausschließlich nach manueller Prüfung bestätigt.'+activeNote;
+    await tg('sendMessage',{chat_id:msg.chat.id,text:welcome,reply_markup:welcomeKeyboard()});
+  }
    else if(session.state.startsWith('membership_')){
     const a=session.application_data||{};
-    if(session.state==='membership_name'){if(text.length<2||text.length>150){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein (2–150 Zeichen).'});}else{a.full_name=text;session.state='membership_email';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}}
-    else if(session.state==='membership_email'){if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)){await tg('sendMessage',{chat_id:msg.chat.id,text:'Die E-Mail-Adresse ist ungültig. Bitte erneut eingeben.'});}else{a.email=text.toLowerCase();session.state='membership_address';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}}
-    else if(session.state==='membership_address'){if(text.length<5||text.length>500){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib eine vollständige Anschrift ein (5–500 Zeichen).'});}else{a.address=text;session.state='membership_goals';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}}
-    else if(session.state==='membership_goals'){if(text.length<3||text.length>5000){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte beschreibe deine Ziele (3–5000 Zeichen).'});}else{a.goals=text;session.state='membership_motivation';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}}
-    else if(session.state==='membership_motivation'){if(text.length<3||text.length>5000){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte beschreibe deine Motivation (3–5000 Zeichen).'});}else{a.motivation=text;const aid='MA-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomBytes(3).toString('hex').toUpperCase();await pool.query('INSERT INTO membership_applications(id,telegram_chat_id,full_name,email,address,goals,motivation) VALUES($1,$2,$3,$4,$5,$6,$7)',[aid,chat,a.full_name,a.email,a.address,a.goals,a.motivation]);await tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'📝 Mitgliedschaftsantrag '+aid+'\n'+applicationMessage(a),reply_markup:{inline_keyboard:[[{text:'Bewerbungsportal öffnen',url:'https://rothshild-application-portal.onrender.com'}]]}});session.state='cart';session.application_data={};await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Vielen Dank. Deine Bewerbung wurde an die Administration übermittelt und wird geprüft. Bewerbungsnummer: '+aid,reply_markup:welcomeKeyboard()});}}
+    if(session.state==='membership_name'){
+     if(text.length<2||text.length>150)await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein (2–150 Zeichen).'});
+     else{a.full_name=text;session.state='membership_email';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}
+    }else if(session.state==='membership_email'){
+     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))await tg('sendMessage',{chat_id:msg.chat.id,text:'Die E-Mail-Adresse ist ungültig. Bitte erneut eingeben.'});
+     else{a.email=text.toLowerCase();session.state='membership_address';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}
+    }else if(session.state==='membership_address'){
+     if(text.length<5||text.length>500)await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib eine vollständige Anschrift ein (5–500 Zeichen).'});
+     else{a.address=text;session.state='membership_goals';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}
+    }else if(session.state==='membership_goals'){
+     if(text.length<3||text.length>5000)await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte beschreibe deine Ziele (3–5000 Zeichen).'});
+     else{a.goals=text;session.state='membership_motivation';session.application_data=a;await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}
+    }else if(session.state==='membership_motivation'){
+     if(text.length<3||text.length>5000)await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte beschreibe deine Motivation (3–5000 Zeichen).'});
+     else{
+      a.motivation=text;
+      const aid='MA-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomBytes(3).toString('hex').toUpperCase();
+      await pool.query('INSERT INTO membership_applications(id,telegram_chat_id,full_name,email,address,goals,motivation) VALUES($1,$2,$3,$4,$5,$6,$7)',[aid,chat,a.full_name,a.email,a.address,a.goals,a.motivation]);
+      session.state='cart';session.application_data={};await saveSession(session);
+      await tg('sendMessage',{chat_id:msg.chat.id,text:'Vielen Dank. Deine Bewerbung wurde gespeichert. Bewerbungsnummer: '+aid+'. Die Administration wird über den Eingang informiert, sobald der Support-Kanal erreichbar ist.',reply_markup:welcomeKeyboard()});
+      try{await tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'📝 Mitgliedschaftsantrag '+aid+'\n'+applicationMessage(a),reply_markup:{inline_keyboard:[[{text:'Bewerbungsportal öffnen',url:'https://rothshild-application-portal.onrender.com'}]]}});}catch(adminError){console.error('Membership admin notification failed:',adminError.message);}
+     }
+    }
    }else if(session.state==='name'){
     if(text.length<2){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein.'});}
     else {session.customer_name=text;session.state='email';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
@@ -78,33 +113,51 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     else {
      const rows=cartRows(session.cart),total=rows.reduce((a,p)=>a+p.lineTotal,0),id=orderId();
      const order={id,name:session.customer_name,email,chatId:chat,items:rows,total,status:'awaiting_txid'};
-     await saveOrder(order);await adminOrder(order);
+     await saveOrder(order);
      session.state='txid';session.pending_order=id;session.customer_email=email;await saveSession(session);
-     const wallet=clean(process.env.BITCOIN_WALLET_ADDRESS||'bc1qh7pkrra6dzavph6ed072hz30aa42nqx8kr9as3',120);const payText='₿ Bitcoin-Vorkasse\nBestellung: '+id+'\nGesamt: '+money(total)+'\n\nBitcoin-Adresse:\n'+wallet+'\n\nBitte sende den Betrag exakt in Bitcoin an diese Adresse. Anschließend hier die Transaktions-ID (TXID) eingeben. Zahlung ist erst nach Admin-Prüfung bestätigt.';const qr='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent('bitcoin:'+wallet+'?amount='+Number(total).toFixed(2));await tg('sendPhoto',{chat_id:msg.chat.id,photo:qr,caption:payText});
+     const btcAddress='bc1qh7pkrra6dzavph6ed072hz30aa42nqx8kr9as3';
+     const btcUri='bitcoin:'+btcAddress;
+     const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=420x420&format=png&data='+encodeURIComponent(btcUri);
+     await tg('sendPhoto',{chat_id:msg.chat.id,photo:qrUrl,caption:'₿ Bitcoin-Zahlung für Bestellung '+id+'\nGesamtbetrag: '+money(total)+'\n\nScanne den QR-Code mit deiner Bitcoin-Wallet. Bitte ausschließlich das Bitcoin-Netzwerk verwenden. Der QR-Code enthält die Wallet-Adresse; den BTC-Betrag bitte anhand des angezeigten Bestellbetrags selbst in deiner Wallet eingeben. Die Zahlung wird nicht automatisch bestätigt.'});
+     await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitcoin-Wallet (kopieren):\n'+btcAddress+'\n\nBestellung: '+id+'\nGesamtbetrag: '+money(total)+'\n\nNach der Überweisung sende bitte die Bitcoin-Transaktions-ID (TXID) als nächste Chat-Nachricht. Die Zahlung bleibt bis zur manuellen Prüfung offen.',reply_markup:{inline_keyboard:[[{text:'📋 TXID übermitteln',callback_data:'txid:submit'}],[{text:'🧾 Bestellung / TXID',callback_data:'order:txid'}]]}});
+     try{await adminOrder(order);}catch(adminError){console.error('Order admin notification failed:',adminError.message);}
     }
    }else if(session.state==='txid'&&session.pending_order){
     const id=session.pending_order;
     if(text.length<8){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende eine vollständige TXID.'});}
     else {
-     await pool.query('UPDATE shop_orders SET txid=$1,status=$2 WHERE order_number=$3 AND telegram_chat_id=$4',[text,'txid_submitted',id,chat]);
-     const order=await getOrder(id);
-     await tg('sendMessage',{chat_id:msg.chat.id,text:'TXID für '+id+' wurde an die Administration zur Prüfung übermittelt. Zahlung ist bis zur Bestätigung weiterhin offen.'});
-     await tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'🔎 TXID eingegangen\nBestellung: '+id+'\nTXID: '+text+'\nBitte unabhängig prüfen.',reply_markup:{inline_keyboard:[[{text:'Zahlung bestätigen',callback_data:'paid:'+id},{text:'Ablehnen',callback_data:'reject:'+id}]]}});
+     const updated=await pool.query("UPDATE shop_orders SET txid=$1,status='txid_submitted' WHERE order_number=$2 AND telegram_chat_id=$3 AND status IN ('awaiting_txid','txid_submitted') RETURNING *",[text,id,chat]);
+     if(!updated.rowCount){await tg('sendMessage',{chat_id:msg.chat.id,text:'Diese Bestellung wurde nicht gefunden oder ist bereits abgeschlossen. Bitte kontaktiere den Support.'});}
+     else{
+       await tg('sendMessage',{chat_id:msg.chat.id,text:'TXID für '+id+' wurde gespeichert und zur manuellen Prüfung eingereicht. Zahlung ist bis zur Bestätigung weiterhin offen.'});
+       try{await tg('sendMessage',{chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:'🔎 TXID eingegangen\nBestellung: '+id+'\nTXID: '+text+'\nBitte unabhängig prüfen.',reply_markup:{inline_keyboard:[[{text:'Zahlung bestätigen',callback_data:'paid:'+id},{text:'Ablehnen',callback_data:'reject:'+id}]]}});}catch(adminError){console.error('TXID admin notification failed:',adminError.message);}
+     }
     }
    }else {await tg('sendMessage',{chat_id:msg.chat.id,text:'Nutze /start, um den Shop zu öffnen.'});}
   }else if(cb){
    const chat=String(cb.message.chat.id),data=String(cb.data||'');let session=await getSession(chat);
    if(data.startsWith('add:')){const p=catalog.find(p=>p.id===data.slice(4));if(p)session.cart[p.id]=Math.min(25,(session.cart[p.id]||0)+1);await saveSession(session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
    else if(data.startsWith('dec:')){const id=data.slice(4);session.cart[id]=Math.max(0,(session.cart[id]||0)-1);await saveSession(session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
+   else if(data==='order:txid'){
+    if(session.state==='txid'&&session.pending_order){
+      await tg('sendMessage',{chat_id:cb.message.chat.id,text:'🧾 Offene Bestellung: '+session.pending_order+'\nBitte sende jetzt die vollständige Bitcoin-Transaktions-ID (TXID) als nächste Nachricht. Die Zahlung bleibt bis zur manuellen Prüfung offen.'});
+    }else{
+      await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Es wurde keine offene Bestellung mit ausstehender TXID gefunden. Öffne den Shop und schließe zuerst eine Bestellung ab.',reply_markup:{inline_keyboard:[[{text:'🛍 Shop öffnen',callback_data:'menu'}]]}});
+    }
+   }
    else if(data==='menu')await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:'Wähle Produkte:',reply_markup:productKeyboard()});
    else if(data==='cart')await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});
    else if(data==='membership:start'){session.state='membership_name';session.application_data={};await saveSession(session);await tg('sendMessage',{chat_id:cb.message.chat.id,text:'MITGLIEDSCHAFTSVERFAHREN\nBitte fülle die Bewerbung vollständig aus. Die Angaben werden zur Prüfung an die Administration übermittelt.\n\n'+applicationPrompts[session.state],reply_markup:{inline_keyboard:[[{text:'Bewerbung abbrechen',callback_data:'membership:cancel'}]]}});}
    else if(data==='membership:cancel'){session.state='cart';session.application_data={};await saveSession(session);await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Die Bewerbung wurde abgebrochen. Du kannst sie jederzeit erneut starten.',reply_markup:welcomeKeyboard()});}
+   else if(data==='txid:submit'){
+    if(session.state==='txid'&&session.pending_order)await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitte sende jetzt die vollständige Bitcoin-Transaktions-ID (TXID) als Nachricht.'});
+    else await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Keine offene Bestellung mit TXID.'});
+   }
    else if(data==='noop'){}
    else if(data==='checkout'){if(!cartRows(session.cart).length)await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Warenkorb ist leer.'});else{session.state='name';await saveSession(session);await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitte gib deinen vollständigen Namen ein, um die Bestellung anzulegen.'});}}
    else if(data.startsWith('paid:')||data.startsWith('reject:')){
     if(String(cb.from.id)!==String(process.env.TELEGRAM_ADMIN_USER_ID)){await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Nicht autorisiert.'});}
-    else {const id=data.slice(data.indexOf(':')+1),paid=data.startsWith('paid:');await pool.query('UPDATE shop_orders SET status=$1,paid_at=CASE WHEN $2 THEN now() ELSE paid_at END WHERE order_number=$3',[paid?'paid':'payment_rejected',paid,id]);const order=await getOrder(id);if(order?.telegram_chat_id)await tg('sendMessage',{chat_id:order.telegram_chat_id,text:paid?'Zahlung für '+id+' wurde durch die Administration bestätigt. Rechnung: '+origin+'/api/shop/invoice/'+id: 'Zahlung für '+id+' wurde nicht bestätigt. Bitte kontaktiere den Support.'});await tg('answerCallbackQuery',{callback_query_id:cb.id,text:paid?'Zahlung bestätigt':'Abgelehnt'});}
+    else {const id=data.slice(data.indexOf(':')+1),paid=data.startsWith('paid:');await pool.query('UPDATE shop_orders SET status=$1,paid_at=CASE WHEN $2 THEN now() ELSE paid_at END WHERE order_number=$3',[paid?'paid':'payment_rejected',paid,id]);const order=await getOrder(id);if(order?.telegram_chat_id){if(paid)await tg('sendMessage',{chat_id:order.telegram_chat_id,text:'Zahlung für '+id+' wurde nach manueller Prüfung bestätigt. Deine Rechnung ist verfügbar.',reply_markup:{inline_keyboard:[[{text:'🧾 Rechnung öffnen',url:origin+'/api/shop/invoice/'+id}]]}});else await tg('sendMessage',{chat_id:order.telegram_chat_id,text:'Zahlung für '+id+' wurde nicht bestätigt. Bitte kontaktiere den Support unter @Rothshild_Adriano.'});}await tg('answerCallbackQuery',{callback_query_id:cb.id,text:paid?'Zahlung bestätigt':'Abgelehnt'});}
    }
    else if(data.startsWith('review:')){if(String(cb.from.id)!==String(process.env.TELEGRAM_ADMIN_USER_ID))await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Nicht autorisiert.'});else{const order=await getOrder(data.slice(7));await tg('sendMessage',{chat_id:cb.message.chat.id,text:order?'Bestellung '+order.order_number+'\nStatus: '+order.status+'\nTXID: '+(order.txid||'noch keine'):'Bestellung nicht gefunden.'});}}
    await tg('answerCallbackQuery',{callback_query_id:cb.id});
