@@ -23,8 +23,8 @@ const catalog=[
  {id:'pendant',name:'Menorah Pendant Necklace',price:215},
  {id:'candle',name:'Amber Glass Candle',price:130}
 ];
-const sessions=new Map();
-const states=new Map();
+const getSession=async chat=>{if(!pool)throw new Error('DATABASE_URL required for persistent Telegram checkout sessions');const r=await pool.query('SELECT * FROM telegram_shop_sessions WHERE chat_id=$1',[chat]);return r.rows[0]||{chat_id:chat,state:'cart',cart:{},customer_name:null,customer_email:null,pending_order:null};};
+const saveSession=s=>pool.query(`INSERT INTO telegram_shop_sessions(chat_id,state,cart,customer_name,customer_email,pending_order,updated_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,now()) ON CONFLICT(chat_id) DO UPDATE SET state=EXCLUDED.state,cart=EXCLUDED.cart,customer_name=EXCLUDED.customer_name,customer_email=EXCLUDED.customer_email,pending_order=EXCLUDED.pending_order,updated_at=now()`,[s.chat_id,s.state,JSON.stringify(s.cart||{}),s.customer_name,s.customer_email,s.pending_order]);
 const money=n=>'$'+Number(n).toFixed(2);
 const orderId=()=> 'RO-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomBytes(3).toString('hex').toUpperCase();
 const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
@@ -33,7 +33,7 @@ const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
  txid text, status text NOT NULL DEFAULT 'awaiting_txid',
  created_at timestamptz NOT NULL DEFAULT now(), paid_at timestamptz
 )`;
-async function init(){if(pool){await pool.query(orderTable);await pool.query('ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS customer_address text');}}
+async function init(){if(pool){await pool.query(orderTable);await pool.query('ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS customer_address text');await pool.query(`CREATE TABLE IF NOT EXISTS telegram_shop_sessions(chat_id text PRIMARY KEY,state text NOT NULL DEFAULT 'cart',cart jsonb NOT NULL DEFAULT '{}'::jsonb,customer_name text,customer_email text,pending_order text,updated_at timestamptz NOT NULL DEFAULT now())`);}}
 async function tg(method,payload){
  if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('TELEGRAM_BOT_TOKEN is not configured in the backend environment.');
  const r=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -57,23 +57,23 @@ app.post('/api/telegram/webhook',async(req,res)=>{
   const msg=update.message,cb=update.callback_query;
   if(msg?.text){
    const chat=String(msg.chat.id),text=clean(msg.text,1000);
-   let session=sessions.get(chat)||{cart:{}};
-   if(text==='/start'||text==='/menu'){sessions.set(chat,{cart:{}});await tg('sendMessage',{chat_id:msg.chat.id,text:'Willkommen im Shop. Wähle Produkte; der endgültige Preis und die Zahlung werden separat bestätigt.',reply_markup:productKeyboard()});}
-   else if(states.get(chat)==='name'){
+   let session=await getSession(chat);
+   if(text==='/start'||text==='/menu'){if(['name','email','txid'].includes(session.state)){const prompt=session.state==='name'?'Bitte gib deinen vollständigen Namen ein.':session.state==='email'?'Bitte sende deine E-Mail-Adresse oder -.':'Deine Bestellung '+(session.pending_order||'')+' ist noch offen. Sende nach Zahlung die TXID.';await tg('sendMessage',{chat_id:msg.chat.id,text:'Dein Checkout bleibt gespeichert.\\n'+prompt,reply_markup:cartKeyboard(session.cart)});}else{session.state='cart';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Willkommen im Shop. Wähle Produkte; der endgültige Preis und die Zahlung werden separat bestätigt.',reply_markup:productKeyboard()});}}
+   else if(session.state==='name'){
     if(text.length<2){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein.'});}
-    else {session.name=text;states.set(chat,'email');sessions.set(chat,session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
-   }else if(states.get(chat)==='email'){
+    else {session.name=text;session.state='email';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
+   }else if(session.state==='email'||(session.state!=='name'&&session.state!=='txid'&&Boolean(session.customer_name)&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(text))){
     const email=text==='-'?'':text.toLowerCase();
     if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){await tg('sendMessage',{chat_id:msg.chat.id,text:'Die E-Mail sieht ungültig aus. Bitte erneut eingeben oder „-“ senden.'});}
     else {
      const rows=cartRows(session.cart),total=rows.reduce((a,p)=>a+p.lineTotal,0),id=orderId();
-     const order={id,name:session.name,email,chatId:chat,items:rows,total,status:'awaiting_txid'};
+     const order={id,name:session.customer_name,email,chatId:chat,items:rows,total,status:'awaiting_txid'};
      await saveOrder(order);await adminOrder(order);
-     states.set(chat,'txid:'+id);sessions.set(chat,session);
+     session.state='txid';session.pending_order=id;session.customer_email=email;await saveSession(session);
      await tg('sendMessage',{chat_id:msg.chat.id,text:'Bestellung '+id+' wurde übermittelt. Gesamt: '+money(total)+'. Bitte warte auf die offizielle Zahlungsanweisung. Sende anschließend die Transaktions-ID (TXID) als Nachricht. Die Zahlung ist noch NICHT bestätigt.'});
     }
-   }else if(states.get(chat)?.startsWith('txid:')){
-    const id=states.get(chat).slice(5);
+   }else if(session.state==='txid'&&session.pending_order){
+    const id=session.pending_order;
     if(text.length<8){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende eine vollständige TXID.'});}
     else {
      await pool.query('UPDATE shop_orders SET txid=$1,status=$2 WHERE order_number=$3 AND telegram_chat_id=$4',[text,'txid_submitted',id,chat]);
@@ -83,13 +83,13 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     }
    }else {await tg('sendMessage',{chat_id:msg.chat.id,text:'Nutze /start, um den Shop zu öffnen.'});}
   }else if(cb){
-   const chat=String(cb.message.chat.id),data=String(cb.data||'');let session=sessions.get(chat)||{cart:{}};
-   if(data.startsWith('add:')){const p=catalog.find(p=>p.id===data.slice(4));if(p)session.cart[p.id]=Math.min(25,(session.cart[p.id]||0)+1);sessions.set(chat,session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
-   else if(data.startsWith('dec:')){const id=data.slice(4);session.cart[id]=Math.max(0,(session.cart[id]||0)-1);sessions.set(chat,session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
+   const chat=String(cb.message.chat.id),data=String(cb.data||'');let session=await getSession(chat);
+   if(data.startsWith('add:')){const p=catalog.find(p=>p.id===data.slice(4));if(p)session.cart[p.id]=Math.min(25,(session.cart[p.id]||0)+1);await saveSession(session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
+   else if(data.startsWith('dec:')){const id=data.slice(4);session.cart[id]=Math.max(0,(session.cart[id]||0)-1);await saveSession(session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
    else if(data==='menu')await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:'Wähle Produkte:',reply_markup:productKeyboard()});
    else if(data==='cart')await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});
    else if(data==='noop'){}
-   else if(data==='checkout'){if(!cartRows(session.cart).length)await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Warenkorb ist leer.'});else{states.set(chat,'name');await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitte gib deinen vollständigen Namen ein, um die Bestellung anzulegen.'});}}
+   else if(data==='checkout'){if(!cartRows(session.cart).length)await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Warenkorb ist leer.'});else{session.state='name';await saveSession(session);await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitte gib deinen vollständigen Namen ein, um die Bestellung anzulegen.'});}}
    else if(data.startsWith('paid:')||data.startsWith('reject:')){
     if(String(cb.from.id)!==String(process.env.TELEGRAM_ADMIN_USER_ID)){await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Nicht autorisiert.'});}
     else {const id=data.slice(data.indexOf(':')+1),paid=data.startsWith('paid:');await pool.query('UPDATE shop_orders SET status=$1,paid_at=CASE WHEN $2 THEN now() ELSE paid_at END WHERE order_number=$3',[paid?'paid':'payment_rejected',paid,id]);const order=await getOrder(id);if(order?.telegram_chat_id)await tg('sendMessage',{chat_id:order.telegram_chat_id,text:paid?'Zahlung für '+id+' wurde durch die Administration bestätigt. Rechnung: '+origin+'/api/shop/invoice/'+id: 'Zahlung für '+id+' wurde nicht bestätigt. Bitte kontaktiere den Support.'});await tg('answerCallbackQuery',{callback_query_id:cb.id,text:paid?'Zahlung bestätigt':'Abgelehnt'});}
