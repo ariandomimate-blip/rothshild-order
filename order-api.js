@@ -80,7 +80,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
      const order={id,name:session.customer_name,email,chatId:chat,items:rows,total,status:'awaiting_txid'};
      await saveOrder(order);await adminOrder(order);
      session.state='txid';session.pending_order=id;session.customer_email=email;await saveSession(session);
-     await tg('sendMessage',{chat_id:msg.chat.id,text:'Bestellung '+id+' wurde übermittelt. Gesamt: '+money(total)+'. Bitte warte auf die offizielle Zahlungsanweisung. Sende anschließend die Transaktions-ID (TXID) als Nachricht. Die Zahlung ist noch NICHT bestätigt.'});
+     const wallet=clean(process.env.BITCOIN_WALLET_ADDRESS||'bc1qh7pkrra6dzavph6ed072hz30aa42nqx8kr9as3',120);const payText='₿ Bitcoin-Vorkasse\nBestellung: '+id+'\nGesamt: '+money(total)+'\n\nBitcoin-Adresse:\n'+wallet+'\n\nBitte sende den Betrag exakt in Bitcoin an diese Adresse. Anschließend hier die Transaktions-ID (TXID) eingeben. Zahlung ist erst nach Admin-Prüfung bestätigt.';const qr='https://api.qrserver.com/v1/create-qr-code/?size=320x320&data='+encodeURIComponent('bitcoin:'+wallet+'?amount='+Number(total).toFixed(2));await tg('sendPhoto',{chat_id:msg.chat.id,photo:qr,caption:payText});
     }
    }else if(session.state==='txid'&&session.pending_order){
     const id=session.pending_order;
