@@ -49,7 +49,8 @@ app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"scr
 app.use(cors({origin:(origin,callback)=>{
   if(!origin)return callback(null,false);
   const incoming=normalizedOrigin(origin),configured=normalizedOrigin(process.env.APP_ORIGIN||'');
-  if(incoming&&(incoming===configured))return callback(null,true);
+  const renderOrigin='https://the-house-of-rothshild-illuminati.onrender.com';
+  if(incoming&&(incoming===configured||incoming===renderOrigin))return callback(null,true);
   return callback(null,false);
 },credentials:true}));
 app.use(express.json({limit:'2mb'})); app.use(cookieParser());
@@ -84,14 +85,14 @@ app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHead
 app.post('/api/auth/register',async(req,res)=>{
  const email=clean(req.body.email,254).toLowerCase(), name=clean(req.body.displayName,70), password=String(req.body.password||'');
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||name.length<2||password.length<12)return res.status(400).json({error:'Bitte gültige E-Mail, Anzeigename und Passwort mit mindestens 12 Zeichen angeben.'});
- try{const hash=await bcrypt.hash(password,12);await q('INSERT INTO users(email,display_name,password_hash) VALUES($1,$2,$3)',[email,name,hash]);res.status(201).json({message:'Antrag eingegangen. Freischaltung durch die Administration erforderlich.'});}
+ try{const hash=await bcrypt.hash(password,12);const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();const status=email===ownerEmail?'approved':'pending';await q('INSERT INTO users(email,display_name,password_hash,status) VALUES($1,$2,$3,$4)',[email,name,hash,status]);res.status(201).json({message:status==='approved'?'Konto erstellt und freigeschaltet. Du kannst dich jetzt anmelden.':'Antrag eingegangen. Freischaltung durch die Administration erforderlich.'});}
  catch(e){res.status(e.code==='23505'?409:500).json({error:e.code==='23505'?'E-Mail bereits registriert':'Registrierung derzeit nicht möglich'});}
 });
 app.post('/api/auth/login',async(req,res)=>{
  const email=clean(req.body.email,254).toLowerCase(), password=String(req.body.password||'');
  const r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE email=$1',[email]);
  if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({error:'Anmeldedaten ungültig'});
- const u=r.rows[0];res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
+ let u=r.rows[0];const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();if(u.email.toLowerCase()===ownerEmail&&u.status!=='approved'){const updated=await q("UPDATE users SET status='approved' WHERE id=$1 RETURNING id,email,display_name,role,status",[u.id]);if(updated.rowCount)u=updated.rows[0];}res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
  res.json({user:{id:u.id,email:u.email,displayName:u.display_name,role:u.role,status:u.status}});
 });
 app.post('/api/auth/logout',(req,res)=>res.clearCookie('session',cookieOpts).json({ok:true}));
