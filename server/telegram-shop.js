@@ -39,5 +39,5 @@ export async function mountTelegramShop(app,pool){
  res.sendStatus(200);}catch(e){console.error('Telegram shop webhook:',e.message);res.status(500).json({error:'Webhook processing failed'});}});
  app.use('/api/telegram',express.json({limit:'64kb'}),router);
  app.get('/api/telegram/health',(req,res)=>res.json({ok:true,configured:Boolean(token&&adminChat&&adminUser),webhook:'/api/telegram/webhook'}));
- if(token&&secret&&process.env.APP_ORIGIN){try{await tg('setWebhook',{url:(process.env.APP_ORIGIN.endsWith('/')?process.env.APP_ORIGIN.slice(0,-1):process.env.APP_ORIGIN)+'/api/telegram/webhook',secret_token:secret,allowed_updates:['message','callback_query']});console.log('Telegram shop webhook registered.');}catch(e){console.warn('Telegram webhook registration failed:',e.message);}}
+ if(process.env.TELEGRAM_WEBHOOK_OWNER==='community-server'&&token&&secret&&process.env.APP_ORIGIN){try{await tg('setWebhook',{url:(process.env.APP_ORIGIN.endsWith('/')?process.env.APP_ORIGIN.slice(0,-1):process.env.APP_ORIGIN)+'/api/telegram/webhook',secret_token:secret,allowed_updates:['message','callback_query']});console.log('Telegram community webhook registered (explicit owner).');}catch(e){console.warn('Telegram webhook registration failed:',e.message);}}
 }
