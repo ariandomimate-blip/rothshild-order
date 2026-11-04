@@ -117,7 +117,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
      const order={id,name:session.customer_name,email,chatId:chat,items:rows,total,status:'awaiting_txid'};
      await saveOrder(order);
      session.state='txid';session.pending_order=id;session.customer_email=email;await saveSession(session);
-     const btcAddress='bc1qh7pkrra6dzavph6ed072hz30aa42nqx8kr9as3';
+     const btcAddress='12RFpbxvFpWSzk6H3Y4faNRTf9vTzfVKPF';
      const btcUri='bitcoin:'+btcAddress;
      const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=420x420&format=png&data='+encodeURIComponent(btcUri);
      await tg('sendPhoto',{chat_id:msg.chat.id,photo:qrUrl,caption:'₿ Bitcoin-Zahlung für Bestellung '+id+'\nGesamtbetrag: '+money(total)+'\n\nScanne den QR-Code mit deiner Bitcoin-Wallet. Bitte ausschließlich das Bitcoin-Netzwerk verwenden. Der QR-Code enthält die Wallet-Adresse; den BTC-Betrag bitte anhand des angezeigten Bestellbetrags selbst in deiner Wallet eingeben. Die Zahlung wird nicht automatisch bestätigt.'});
