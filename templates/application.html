@@ -1,19 +1,14 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bewerbung | ROTHSHILD</title>
-<style>
-*{box-sizing:border-box}body{margin:0;background:#090806;color:#e8d5a2;font-family:Georgia,serif}
-header{text-align:center;padding:28px 15px;border-bottom:1px solid #806438}h1{letter-spacing:7px;margin:0;font-size:30px}header p{letter-spacing:3px;font-size:12px}
-main{max-width:650px;margin:35px auto;padding:25px;border:1px solid #806438}h2{text-align:center;font-size:27px}.intro{text-align:center;color:#c5bba7;line-height:1.6}
-label{display:block;margin:22px 0 8px}input,textarea{width:100%;padding:14px;border:1px solid #806438;background:#15120e;color:#f5e8cb;font:16px Georgia,serif;border-radius:0}textarea{min-height:120px;resize:vertical}input:focus,textarea:focus{outline:2px solid #c8a45d}
-button{width:100%;margin-top:30px;padding:17px;border:1px solid #e8cf91;background:linear-gradient(110deg,#9d7130,#e7c675);color:#090806;font-size:16px;letter-spacing:2px;cursor:pointer}.message{padding:15px;margin:15px 0;line-height:1.5}.success{border:1px solid #8caa7b;color:#c9e6b8}.error{border:1px solid #b36d6d;color:#ffc1c1}.privacy{margin-top:20px;color:#b8aa91;font-size:12px;line-height:1.6}@media(max-width:600px){main{margin:20px 12px;padding:20px}h1{font-size:23px}}
-</style></head><body><header><h1>ROTHSHILD</h1><p>ORDEN DES LICHTS</p></header><main><h2>Mitgliedschaftsbewerbung</h2>
-<p class="intro">Bitte fülle das Bewerbungsformular vollständig aus.</p>
-{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="message {{ category }}" role="status">{{ message }}</div>{% endfor %}{% endwith %}
-<form method="post" action="{{ url_for('application') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<label for="name">Vollständiger Name *</label><input id="name" name="name" maxlength="150" autocomplete="name" required>
-<label for="email">E-Mail-Adresse *</label><input id="email" type="email" name="email" maxlength="254" autocomplete="email" required>
-<label for="address">Anschrift *</label><input id="address" name="address" maxlength="500" autocomplete="street-address" required>
-<label for="goals">Persönliche Ziele *</label><textarea id="goals" name="goals" maxlength="5000" placeholder="Welche Ziele möchtest du erreichen?" required></textarea>
-<label for="motivation">Motivation *</label><textarea id="motivation" name="motivation" maxlength="5000" placeholder="Warum möchtest du dich bewerben?" required></textarea>
-<button type="submit">BEWERBUNG EINREICHEN</button><p class="privacy">* Pflichtfelder. Deine Angaben werden zur Bearbeitung deiner Bewerbung an die Administration übermittelt.</p></form></main></body></html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="0;url=https://the-house-of-rothshild-illuminati.onrender.com/bewerbung.html">
+<title>Weiterleitung · ROTHSHILD</title>
+</head>
+<body>
+<p>Das Bewerbungsformular befindet sich auf der Hauptseite.</p>
+<p><a href="https://the-house-of-rothshild-illuminati.onrender.com/bewerbung.html">Zum einmaligen Mitgliedschaftsformular</a></p>
+<script>window.location.replace("https://the-house-of-rothshild-illuminati.onrender.com/bewerbung.html");</script>
+</body>
+</html>
