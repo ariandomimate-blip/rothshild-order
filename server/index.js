@@ -76,7 +76,7 @@ async function notifyAdmins(subject,text,replyTo){if(!process.env.SMTP_HOST||!pr
 app.get('/api/health',(req,res)=>res.json({ok:true}));
 app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
  const fullName=clean(req.body?.fullName,120),email=clean(req.body?.email,254).toLowerCase(),address=clean(req.body?.address,300),goals=clean(req.body?.goals,4000),motivation=clean(req.body?.motivation,4000);
- if(fullName.length<2||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||address.length<5||goals.length<2||motivation.length<2)return res.status(400).json({error:'Bitte alle Pflichtfelder vollständig und mit gültiger E-Mail-Adresse ausfüllen.'});
+ if(fullName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||address.length<5||goals.length<2||motivation.length<2)return res.status(400).json({error:'Bitte alle Pflichtfelder vollständig und mit gültiger E-Mail-Adresse ausfüllen.'});
  const body=['Neue Mitgliedschaftsbewerbung','', 'Vollständiger Name: '+fullName,'E-Mail-Adresse: '+email,'Anschrift: '+address,'','Persönliche Ziele:',goals,'','Motivation:',motivation].join('\\n');
  try{
   await notifyAdmins('Mitgliedschaftsbewerbung – '+fullName,body,email);
