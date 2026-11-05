@@ -80,3 +80,7 @@ footer{padding:38px 20px;background:#080706;border-top:1px solid var(--line);dis
 .hero .gold{max-width:100%;margin:8px auto;}
 .hero .membership-application-button{margin-top:8px;}
 @media(max-width:760px){header #install{display:none!important}.hero{padding-top:64px;padding-bottom:64px}.hero h1{font-size:clamp(44px,12vw,72px);overflow-wrap:anywhere}.hero h2{font-size:clamp(21px,5.5vw,34px)}.hero .gold{max-width:100%;white-space:normal}}
+
+/* Keep both homepage membership actions visible on mobile and desktop. */
+.hero a.membership-application-button{display:block!important;visibility:visible!important;opacity:1!important;position:relative;z-index:2;min-width:min(380px,100%);margin:12px auto 0!important;}
+.hero a.gold[href='/profil.html']{display:block;min-width:min(380px,100%);}
