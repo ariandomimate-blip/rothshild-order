@@ -59,3 +59,19 @@ footer{padding:38px 20px;background:#080706;border-top:1px solid var(--line);dis
 .social-profile[hidden],.profile-editor[hidden],.profile-about[hidden],.social-content-grid[hidden]{display:none!important}
 @media(max-width:760px){.social-content-grid{grid-template-columns:1fr}.social-sidebar{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.social-identity{padding:0 18px 15px;gap:14px}.avatar-wrap{width:94px;flex-basis:94px;margin-top:-48px}.avatar-wrap img,.avatar-fallback{width:94px;height:94px;border-width:3px}.avatar-fallback{font-size:34px}.social-details{padding-top:10px}.profile-actions{padding:0 18px 16px}.profile-tabs{padding-left:10px}.profile-tabs button{padding:10px 14px}.social-post{padding:17px}.profile-about dl{grid-template-columns:1fr;gap:5px}.profile-about dd{margin-bottom:10px}}
 @media(max-width:460px){.social-identity{display:block}.avatar-wrap{margin-top:-48px}.social-details{padding-top:12px}.profile-actions .gold,.profile-actions .outline{flex:1;padding:10px}.composer-bottom{align-items:flex-start}.profile-photo-grid img{height:150px}}
+
+
+/* Main-page integration: responsive community and shop previews */
+.home-community{text-align:center}
+.community-preview{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:24px 0}
+.community-preview figure{margin:0;border:1px solid var(--line,#4b3921);background:var(--panel,#100d09);padding:8px}
+.community-preview img{width:100%;height:220px;object-fit:cover;display:block}
+.community-preview figcaption{font:12px Arial,sans-serif;color:#d3c5af;padding:10px 2px}
+.community-video{margin:22px 0}
+#shop-preview .cols{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));align-items:stretch}
+#shop-preview .panel{display:flex;flex-direction:column;gap:10px}
+#shop-preview .product-image{display:block;width:100%;height:220px;object-fit:contain;object-position:center;background:#0c0a08;border:1px solid var(--line,#4b3921);padding:8px}
+#shop-preview .panel strong{margin-top:auto;color:#e4ce98;font-size:1.1rem}
+#shop-preview>.gold{margin-top:22px}
+.hero .membership-application-button{margin-top:12px}
+@media(max-width:560px){.community-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.community-preview img{height:170px}#shop-preview .product-image{height:190px}}
