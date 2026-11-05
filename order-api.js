@@ -103,7 +103,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       await pool.query('INSERT INTO membership_applications(id,telegram_chat_id,full_name,email,address,goals,motivation) VALUES($1,$2,$3,$4,$5,$6,$7)',[aid,chat,a.full_name,a.email,a.address,a.goals,a.motivation]);
       session.state='cart';session.application_data={};await saveSession(session);
       await tg('sendMessage',{chat_id:msg.chat.id,text:'Vielen Dank. Deine Bewerbung wurde gespeichert. Bewerbungsnummer: '+aid+'. Die Administration wurde benachrichtigt. Wenn du möchtest, kannst du die Angaben zusätzlich als vorbereitete Privatnachricht an den Support öffnen und selbst absenden.',reply_markup:{inline_keyboard:[[{text:'💬 Bewerbungsdaten an Support senden',url:supportDraftUrl('Hallo Rothshild Support, ich möchte meine Bewerbung besprechen.\nBewerbungsnummer: '+aid+'\nName: '+a.full_name+'\nE-Mail: '+a.email+'\nAnschrift: '+a.address+'\nZiele: '+a.goals+'\nMotivation: '+a.motivation)}],...welcomeKeyboard().inline_keyboard]}});
-      try{await tg('sendMessage',{chat_id:adminChatTarget(),text:'📝 Mitgliedschaftsantrag '+aid+'\n'+applicationMessage(a),reply_markup:{inline_keyboard:[[{text:'Bewerbungsportal öffnen',url:'https://rothshild-application-portal.onrender.com'}]]}});}catch(adminError){console.error('Membership admin notification failed:',adminError.message);}
+      try{await tg('sendMessage',{chat_id:adminChatTarget(),text:'📝 Mitgliedschaftsantrag '+aid+'\n'+applicationMessage(a),reply_markup:{inline_keyboard:[[{text:'Bewerbungsportal öffnen',url:'https://the-house-of-rothshild-illuminati.onrender.com/bewerbung.html'}]]}});}catch(adminError){console.error('Membership admin notification failed:',adminError.message);}
      }
     }
    }else if(session.state==='name'){
