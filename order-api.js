@@ -48,7 +48,7 @@ function welcomeKeyboard(){return {inline_keyboard:[
  [{text:'🛍 Shop & Produkte',callback_data:'menu'}],
  [{text:'🧾 Bestellung / TXID',callback_data:'order:txid'}],
  [{text:'👑 Mitgliedschaft beantragen',callback_data:'membership:start'}],
- [{text:'📄 Bewerbungsportal öffnen',url:'https://rothshild-application-portal.onrender.com'}],
+ [{text:'📄 Bewerbungsportal öffnen',url:'https://the-house-of-rothshild-illuminati.onrender.com/bewerbung.html'}],
  [{text:'💬 Support kontaktieren',url:'https://t.me/Rothshild_Adriano'}],
  [{text:'🌐 Website öffnen',url:origin}]
 ]};}
