@@ -9,12 +9,13 @@ import crypto from 'node:crypto';
 const app=express();
 const {Pool}=pg;
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false}):null;
-const origin=process.env.APP_ORIGIN||'https://the-house-of-rothschild-illuminati.onrender.com';
+const origin=process.env.APP_ORIGIN||'https://the-house-of-rothshild-illuminati.onrender.com';
 const adminChatTarget=()=>process.env.TELEGRAM_ADMIN_USER_ID||process.env.TELEGRAM_ADMIN_CHAT_ID;
 app.set('trust proxy',1);
 app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'none'"],"connect-src":["'self'"],"img-src":["'self'","data:"],"style-src":["'self'","'unsafe-inline'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
 app.use(cors({origin,methods:['GET','POST'],allowedHeaders:['Content-Type','X-Telegram-Bot-Api-Secret-Token']}));
 app.use(express.json({limit:'30kb'}));
+app.get('/',(req,res)=>res.redirect(302,'https://the-house-of-rothshild-illuminati.onrender.com/'));
 const clean=(v,n=500)=>String(v??'').trim().slice(0,n);
 const catalog=[
  {id:'shield',name:'Royal Shield',price:100},
