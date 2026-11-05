@@ -75,3 +75,8 @@ footer{padding:38px 20px;background:#080706;border-top:1px solid var(--line);dis
 #shop-preview>.gold{margin-top:22px}
 .hero .membership-application-button{margin-top:12px}
 @media(max-width:560px){.community-preview{grid-template-columns:repeat(2,minmax(0,1fr))}.community-preview img{height:170px}#shop-preview .product-image{height:190px}}
+
+/* Consistent mobile homepage across all Rothshild frontends */
+.hero .gold{max-width:100%;margin:8px auto;}
+.hero .membership-application-button{margin-top:8px;}
+@media(max-width:760px){header #install{display:none!important}.hero{padding-top:64px;padding-bottom:64px}.hero h1{font-size:clamp(44px,12vw,72px);overflow-wrap:anywhere}.hero h2{font-size:clamp(21px,5.5vw,34px)}.hero .gold{max-width:100%;white-space:normal}}
