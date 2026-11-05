@@ -9,18 +9,43 @@
 <label for="address">Anschrift *</label><input id="address" name="address" autocomplete="street-address" required maxlength="300" placeholder="Straße, Hausnummer, PLZ, Ort">
 <label for="goals">Persönliche Ziele *</label><textarea id="goals" name="goals" required maxlength="4000" placeholder="Welche Ziele möchtest du in der Community verfolgen?"></textarea>
 <label for="motivation">Motivation *</label><textarea id="motivation" name="motivation" required maxlength="4000" placeholder="Warum möchtest du Mitglied werden?"></textarea>
-<button class="gold" type="submit">BEWERBUNGS-E-MAIL VORBEREITEN</button><p class="application-status" id="status" role="status" aria-live="polite"></p>
+<button class="gold" type="submit">BEWERBUNGS-E-MAIL VORBEREITEN</button><p class="application-status" id="status" role="status" aria-live="polite"></p><a id="mailtoFallback" class="gold" href="#" hidden style="display:block;text-align:center;margin-top:16px;padding:16px">E-MAIL-APP ÖFFNEN UND BEWERBUNG SENDEN</a>
 <p class="application-note">* Pflichtfelder. Beim Klick öffnet sich dein E-Mail-Programm mit vorausgefülltem Empfänger, Betreff und Bewerbungstext. Du kannst alles prüfen und musst die E-Mail anschließend selbst absenden. Deine Angaben werden nicht automatisch versendet.</p>
 </form></main>
 <script>
 const form=document.getElementById('applicationForm');
-form.addEventListener('submit',event=>{
- event.preventDefault();if(!form.reportValidity())return;
+const statusEl=document.getElementById('status');
+const fallback=document.getElementById('mailtoFallback');
+form.addEventListener('submit',async event=>{
+ event.preventDefault();
+ if(!form.reportValidity())return;
  const data=new FormData(form);
- const fullName=String(data.get('fullName')).trim(),email=String(data.get('email')).trim(),address=String(data.get('address')).trim(),goals=String(data.get('goals')).trim(),motivation=String(data.get('motivation')).trim();
- const subject='Mitgliedschaftsantrag – '+fullName;
- const body=['Sehr geehrtes ROTHSHILD Order of Light Administrationsteam,','','hiermit reiche ich meinen Mitgliedschaftsantrag ein.','','Vollständiger Name: '+fullName,'E-Mail-Adresse: '+email,'Anschrift: '+address,'','Persönliche Ziele:',goals,'','Motivation:',motivation,'','Mit freundlichen Grüßen',fullName].join('\n');
- document.getElementById('status').textContent='Dein E-Mail-Programm wird geöffnet. Bitte prüfe die Angaben und sende die E-Mail dort ab.';
- window.location.href='mailto:rothschildofficial938@gmail.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+ const application={
+  fullName:String(data.get('fullName')).trim(),
+  email:String(data.get('email')).trim(),
+  address:String(data.get('address')).trim(),
+  goals:String(data.get('goals')).trim(),
+  motivation:String(data.get('motivation')).trim()
+ };
+ const subject='Mitgliedschaftsantrag – '+application.fullName;
+ const body=['Sehr geehrtes ROTHSHILD Order of Light Administrationsteam,','','hiermit reiche ich meinen Mitgliedschaftsantrag ein.','','Vollständiger Name: '+application.fullName,'E-Mail-Adresse: '+application.email,'Anschrift: '+application.address,'','Persönliche Ziele:',application.goals,'','Motivation:',application.motivation,'','Mit freundlichen Grüßen',application.fullName].join('\\n');
+ fallback.href='mailto:rothschildofficial938@gmail.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+ fallback.hidden=true;
+ statusEl.textContent='Bewerbung wird sicher an die Administration übermittelt …';
+ const submit=form.querySelector('button[type="submit"]');
+ submit.disabled=true;
+ try{
+  const response=await fetch('/api/applications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(application)});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(result.error||'E-Mail-Versand nicht verfügbar.');
+  statusEl.textContent='✓ '+(result.message||'Deine Bewerbung wurde per E-Mail übermittelt.');
+  form.reset();
+ }catch(error){
+  statusEl.textContent=(error.message||'Der Serverversand ist fehlgeschlagen.')+' Du kannst die Bewerbung alternativ über deine E-Mail-App senden:';
+  fallback.hidden=false;
+  fallback.focus();
+ }finally{
+  submit.disabled=false;
+ }
 });
 </script></body></html>
