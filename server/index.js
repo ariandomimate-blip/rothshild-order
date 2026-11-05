@@ -74,8 +74,17 @@ async function isConversationMember(id,userId){const r=await q('SELECT 1 FROM co
 async function notifyAdmins(subject,text,replyTo){if(!process.env.SMTP_HOST||!process.env.SMTP_USER||!process.env.SMTP_PASS||!process.env.SMTP_FROM)throw new Error('SMTP nicht konfiguriert');const nodemailer=(await import('nodemailer')).default;const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});return transporter.sendMail({from:process.env.SMTP_FROM,to:'adiphenex@gmail.com',cc:'rothschildofficial938@gmail.com',replyTo,subject,text});}
 
 app.get('/api/health',(req,res)=>res.json({ok:true}));
-app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false}),(req,res)=>{
- res.status(410).json({error:'Das separate Bewerbungsformular ist deaktiviert. Bitte verwende das zentrale Formular.',applicationFormUrl:'https://the-house-of-rothshild-illuminati.onrender.com/bewerbung.html'});
+app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
+ const fullName=clean(req.body?.fullName,120),email=clean(req.body?.email,254).toLowerCase(),address=clean(req.body?.address,300),goals=clean(req.body?.goals,4000),motivation=clean(req.body?.motivation,4000);
+ if(fullName.length<2||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||address.length<5||goals.length<2||motivation.length<2)return res.status(400).json({error:'Bitte alle Pflichtfelder vollständig und mit gültiger E-Mail-Adresse ausfüllen.'});
+ const body=['Neue Mitgliedschaftsbewerbung','', 'Vollständiger Name: '+fullName,'E-Mail-Adresse: '+email,'Anschrift: '+address,'','Persönliche Ziele:',goals,'','Motivation:',motivation].join('\\n');
+ try{
+  await notifyAdmins('Mitgliedschaftsbewerbung – '+fullName,body,email);
+  return res.status(201).json({ok:true,message:'Deine Bewerbung wurde per E-Mail an die Administration übermittelt.'});
+ }catch(e){
+  console.error('Application email failed:',e.message);
+  return res.status(503).json({error:'Der direkte E-Mail-Versand ist gerade nicht verfügbar. Bitte nutze die vorbereitete E-Mail-App.'});
+ }
 });
 
 app.post('/api/auth/register',async(req,res)=>{
