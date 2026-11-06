@@ -69,6 +69,26 @@ ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS mentor_accepted_at TIMES
 UPDATE users SET role='mentor' WHERE lower(trim(display_name))='querox' AND role<>'admin';
 
 
+-- Administrator designation explicitly requested for the unique Querox profile.
+-- Promote only when exactly one matching account exists; never guess among duplicates.
+DO $
+DECLARE querox_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO querox_count
+  FROM users
+  WHERE lower(trim(display_name)) = 'querox';
+  IF querox_count = 1 THEN
+    UPDATE users
+    SET role = 'admin', status = 'approved'
+    WHERE lower(trim(display_name)) = 'querox';
+    RAISE NOTICE 'Unique Querox account promoted to administrator.';
+  ELSIF querox_count = 0 THEN
+    RAISE NOTICE 'No Querox account found; no administrator role changed.';
+  ELSE
+    RAISE WARNING 'Multiple Querox accounts found (%); no administrator role changed.', querox_count;
+  END IF;
+END $;
+
 -- Per-member confirmation that the first mentor message has been reviewed.
 CREATE TABLE IF NOT EXISTS conversation_unlocks (
  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
