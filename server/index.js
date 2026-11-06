@@ -46,7 +46,7 @@ app.use((req,res,next)=>{
   if(origin && !isAllowedBrowserOrigin(origin,req)) return res.status(403).json({error:'Invalid request origin'});
   next();
 });
-app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"script-src":["'self'"],"style-src":["'self'"],"img-src":["'self'","data:"],"connect-src":["'self'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
+app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"script-src":["'self'"],"style-src":["'self'"],"img-src":["'self'","data:"],"connect-src":["'self'"],"object-src":["'none'"],"frame-ancestors":["'self'"]}}}));
 app.use(cors({origin:(origin,callback)=>{
   if(!origin)return callback(null,false);
   const incoming=normalizedOrigin(origin),configured=normalizedOrigin(process.env.APP_ORIGIN||'');
