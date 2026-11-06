@@ -128,9 +128,32 @@ app.post('/api/admin/mentor-assignments',auth,roles('admin'),async(req,res)=>{
  if(!m.rowCount||!t.rowCount)return res.status(400).json({error:'Freigeschaltetes Mitglied und freigeschalteter Mentor erforderlich'});
  const r=await q('INSERT INTO mentor_assignments(member_id,mentor_id,assigned_by) VALUES($1,$2,$3) ON CONFLICT(member_id,mentor_id) DO UPDATE SET status=$4 RETURNING id',[member,mentor,req.user.id,'invited']);res.status(201).json({assignmentId:r.rows[0].id,status:'invited'});
 });
-app.post('/api/mentor-assignments/:id/respond',auth,async(req,res)=>{
- const accept=req.body.accept===true;const r=await q('UPDATE mentor_assignments SET status=$1 WHERE id=$2 AND (member_id=$3 OR mentor_id=$3) AND status=$4 RETURNING *',[accept?'accepted':'declined',req.params.id,req.user.id,'invited']);
- if(!r.rowCount)return res.status(404).json({error:'Einladung nicht gefunden'});if(accept){const a=r.rows[0];const c=await q('SELECT id FROM conversations WHERE assignment_id=$1 LIMIT 1',[a.id]);let conversationId=c.rows[0]?.id;if(!conversationId){const created=await q('INSERT INTO conversations(assignment_id) VALUES($1) RETURNING id',[a.id]);conversationId=created.rows[0].id;await q('INSERT INTO conversation_members(conversation_id,user_id) VALUES($1,$2),($1,$3) ON CONFLICT DO NOTHING',[conversationId,a.member_id,a.mentor_id]);}}res.json({status:r.rows[0].status});
+app.post('/api/mentor-assignments/:id/respond',auth,approved,async(req,res)=>{
+ try{
+  const accept=req.body.accept===true;
+  let r;
+  if(!accept){
+   r=await q("UPDATE mentor_assignments SET status='declined' WHERE id=$1 AND (member_id=$2 OR mentor_id=$2) AND status='invited' RETURNING *",[req.params.id,req.user.id]);
+  }else{
+   r=await q(`UPDATE mentor_assignments SET
+    member_accepted_at=CASE WHEN member_id=$2 THEN COALESCE(member_accepted_at,now()) ELSE member_accepted_at END,
+    mentor_accepted_at=CASE WHEN mentor_id=$2 THEN COALESCE(mentor_accepted_at,now()) ELSE mentor_accepted_at END,
+    status=CASE WHEN
+     (CASE WHEN member_id=$2 THEN true ELSE member_accepted_at IS NOT NULL END)
+     AND (CASE WHEN mentor_id=$2 THEN true ELSE mentor_accepted_at IS NOT NULL END)
+     THEN 'accepted' ELSE 'invited' END
+    WHERE id=$1 AND (member_id=$2 OR mentor_id=$2) AND status='invited' RETURNING *`,[req.params.id,req.user.id]);
+  }
+  if(!r.rowCount)return res.status(404).json({error:'Einladung nicht gefunden oder bereits beantwortet.'});
+  const a=r.rows[0];
+  if(a.status==='accepted'){
+   const c=await q('SELECT id FROM conversations WHERE assignment_id=$1 LIMIT 1',[a.id]);
+   let conversationId=c.rows[0]?.id;
+   if(!conversationId){const created=await q('INSERT INTO conversations(assignment_id) VALUES($1) RETURNING id',[a.id]);conversationId=created.rows[0].id;}
+   await q('INSERT INTO conversation_members(conversation_id,user_id) VALUES($1,$2),($1,$3) ON CONFLICT DO NOTHING',[conversationId,a.member_id,a.mentor_id]);
+  }
+  res.json({status:a.status,waitingForOther:a.status==='invited'&&accept});
+ }catch(e){console.error('Mentor invitation response failed:',e.message);res.status(500).json({error:'Einladung konnte nicht verarbeitet werden.'});}
 });
 
 app.post('/api/mentor/request',auth,rateLimit({windowMs:60*60*1000,limit:4}),async(req,res)=>{const topic=clean(req.body.topic,140),message=clean(req.body.message,2500);if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte Thema und Nachricht eingeben.'});try{await notifyAdmins('Mentorenanfrage von '+req.user.display_name, 'Mitglied: '+req.user.display_name+' ('+req.user.email+')\nThema: '+topic+'\n\nAnfrage:\n'+message,req.user.email);res.status(201).json({ok:true,message:'Mentorenanfrage an die Administration gesendet.'});}catch(e){res.status(503).json({error:'E-Mail-Versand derzeit nicht verfügbar.'});}});
