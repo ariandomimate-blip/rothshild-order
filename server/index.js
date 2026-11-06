@@ -61,7 +61,7 @@ const q=(s,v=[])=>pool.query(s,v);
 const cookieOpts={httpOnly:true,secure:prod || process.env.COOKIE_SECURE==='true',sameSite:prod?'none':'strict',path:'/'};
 function tokenFor(u){return jwt.sign({sub:u.id,role:u.role,status:u.status},process.env.JWT_SECRET,{expiresIn:'2h',issuer:'rothshild-platform'});}
 async function auth(req,res,next){
- try{const t=req.cookies.session;if(!t)return res.status(401).json({error:'Sign-in required'});const p=jwt.verify(t,process.env.JWT_SECRET,{issuer:'rothshild-platform'});const r=await q('SELECT id,email,display_name,role,status FROM users WHERE id=$1',[p.sub]);if(!r.rowCount)return res.status(401).json({error:'Konto nicht gefunden'});req.user=r.rows[0];next();}catch{return res.status(401).json({error:'Sitzung ungültig oder abgelaufen'});}
+ try{const header=req.get('authorization')||'';const bearer=header.startsWith('Bearer ')?header.slice(7):'';const t=bearer||req.cookies.session;if(!t)return res.status(401).json({error:'Sign-in required'});const p=jwt.verify(t,process.env.JWT_SECRET,{issuer:'rothshild-platform'});const r=await q('SELECT id,email,display_name,role,status FROM users WHERE id=$1',[p.sub]);if(!r.rowCount)return res.status(401).json({error:'Konto nicht gefunden'});req.user=r.rows[0];next();}catch{return res.status(401).json({error:'Sitzung ungültig oder abgelaufen'});}
 }
 const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user.role)?next():res.status(403).json({error:'Permission denied'});
 const approved=(req,res,next)=>req.user.status==='approved'?next():res.status(403).json({error:'Membership has not yet been approved'});
@@ -98,7 +98,7 @@ app.post('/api/auth/login',async(req,res)=>{
  const r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE email=$1',[email]);
  if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({error:'Invalid sign-in details'});
  let u=r.rows[0];const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();if(u.email.toLowerCase()===ownerEmail&&u.status!=='approved'){const updated=await q("UPDATE users SET status='approved' WHERE id=$1 RETURNING id,email,display_name,role,status",[u.id]);if(updated.rowCount)u=updated.rows[0];}res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
- res.json({user:{id:u.id,email:u.email,displayName:u.display_name,role:u.role,status:u.status}});
+ res.json({token:tokenFor(u),user:{id:u.id,email:u.email,displayName:u.display_name,role:u.role,status:u.status}});
 });
 app.post('/api/auth/logout',(req,res)=>res.clearCookie('session',cookieOpts).json({ok:true}));
 app.get('/api/me',auth,(req,res)=>res.json({user:req.user}));
