@@ -91,3 +91,12 @@ footer{padding:38px 20px;background:#080706;border-top:1px solid var(--line);dis
 .chat-msg.ai{align-self:flex-start;background:#100d09}
 #refreshMessenger{margin:10px 0 14px;width:100%}
 #sendForm{margin-top:12px}
+
+/* Stable English-first Google Translate control; suppress Google feedback/tooltips that cover page content. */
+#rothshild-translate{display:flex;align-items:center;gap:6px;margin-left:auto;margin-right:10px;color:#d6b66d;font:12px Arial,sans-serif;white-space:nowrap;min-width:0}
+#rothshild-translate .goog-te-gadget{font-size:0!important;color:transparent!important}
+#rothshild-translate .goog-te-combo{width:118px;max-width:118px;margin:0!important;padding:6px 5px;background:#100e0a;color:#e9ce91;border:1px solid #8b713e;border-radius:5px;font-size:12px}
+.goog-te-banner-frame,.goog-te-balloon-frame,.goog-te-ftab,.goog-te-menu-frame,#goog-gt-tt,.goog-tooltip,.VIpgJd-yAWNEb-L7lbkb,.VIpgJd-ZVi9od-aZ2wEe-wOHMyf,.skiptranslate iframe,iframe.goog-te-menu-frame{display:none!important;visibility:hidden!important;pointer-events:none!important}
+.goog-text-highlight{background:transparent!important;box-shadow:none!important}
+body{top:0!important}
+@media(max-width:480px){#rothshild-translate{margin-right:6px}#rothshild-translate .goog-te-combo{width:94px;max-width:94px;font-size:11px}}
