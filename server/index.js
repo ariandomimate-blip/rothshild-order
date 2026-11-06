@@ -220,7 +220,7 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   const customerAddress=clean(req.body?.customerAddress,500);
   const orderNumber=clean(req.body?.orderNumber,40);
   const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
-  if(customerName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||customerAddress.length<8||!/^RO-[0-9]{8}-[A-F0-9]{6}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
+  if(customerName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||customerAddress.length<8||!/^RO-[0-9]{8}-[A-F0-9]{10}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
    return res.status(400).json({error:'Bitte Name, gültige E-Mail, vollständige Adresse, Bestellnummer und Warenkorb prüfen.'});
   }
   const items=[];
@@ -234,12 +234,305 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
   const lines=[
    'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,
+   'Bestellnummer: '+orderNumber,\n   'Erstellt am: '+new Date().toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}),\n   'Dokument: Bestellübersicht / unverbindliche Bestellanfrage (keine Rechnung im steuerrechtlichen Sinn)',
    'Name: '+customerName,
    'E-Mail: '+customerEmail,
    'Lieferadresse: '+customerAddress,
    '',
-   ...items.map(item=>item.name+' × '+item.quantity+' — '+item.lineTotal.toFixed(2)),
+   ...items.map(item=>item.name+' | Einzelpreis: 
+   '',
+   'Warenwert: 
+   '',
+   'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
+   'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
+  ];
+  // Optional direct email via SMTP. If SMTP is not configured, the checkout
+  // continues to the prepared mailto handoff; no email is claimed as sent.
+  const mailSubject='Shop-Bestellung '+orderNumber;
+  const mailText=lines.join('\\n');
+  let emailSent=false;
+  if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
+   const nodemailer=(await import('nodemailer')).default;
+   const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:mailSubject,text:mailText});
+   emailSent=true;
+  } else {
+   console.warn('SMTP not configured: order email will be prepared for the customer to send from their email app.');
+  }
+  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
+   console.warn('Telegram order notification skipped: credentials not configured.');
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\n'),disable_web_page_preview:true})
+  });
+  const tgData=await tg.json().catch(()=>({}));
+  if(!tg.ok||tgData.ok!==true){
+   console.error('Telegram order notification failed; email order was accepted:',tgData.description||tg.status);
+   // Email is the primary order channel; keep checkout successful if optional Telegram fails.
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  res.status(201).json({ok:true,orderNumber,total,items,emailSent});
+ }catch(e){
+  console.error('Shop order failed:',e.message);
+  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
+ }
+});
+
+// Serve approved gallery media from repository-root assets under a stable, versioned path.
+const communityAssets = new Set(['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']);
+app.get('/community-assets/:asset', (req,res,next)=>{
+  const asset=req.params.asset;
+  if(!communityAssets.has(asset)) return res.sendStatus(404);
+  res.set('Cache-Control','public, max-age=86400, stale-while-revalidate=604800');
+  res.sendFile(path.resolve(__dirname,'..',asset), err=>{ if(err && !res.headersSent) next(err); });
+});
+// Backwards-compatible URLs for older page versions.
+for (const asset of communityAssets) app.get('/'+asset, (req,res)=>res.redirect(302,'/community-assets/'+asset));
+if (process.env.DATABASE_URL) await mountTelegramShop(app,pool);
+app.use(express.static(path.join(__dirname,'../public')));
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+const port=Number(process.env.PORT||3000);
+const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
+app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
++item.unitPrice.toFixed(2)+' | Menge: '+item.quantity+' | Summe: 
+   '',
+   'Warenwert: '+total.toFixed(2),
+   '',
+   'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
+   'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
+  ];
+  // Optional direct email via SMTP. If SMTP is not configured, the checkout
+  // continues to the prepared mailto handoff; no email is claimed as sent.
+  const mailSubject='Shop-Bestellung '+orderNumber;
+  const mailText=lines.join('\\n');
+  let emailSent=false;
+  if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
+   const nodemailer=(await import('nodemailer')).default;
+   const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:mailSubject,text:mailText});
+   emailSent=true;
+  } else {
+   console.warn('SMTP not configured: order email will be prepared for the customer to send from their email app.');
+  }
+  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
+   console.warn('Telegram order notification skipped: credentials not configured.');
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\n'),disable_web_page_preview:true})
+  });
+  const tgData=await tg.json().catch(()=>({}));
+  if(!tg.ok||tgData.ok!==true){
+   console.error('Telegram order notification failed; email order was accepted:',tgData.description||tg.status);
+   // Email is the primary order channel; keep checkout successful if optional Telegram fails.
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  res.status(201).json({ok:true,orderNumber,total,items,emailSent});
+ }catch(e){
+  console.error('Shop order failed:',e.message);
+  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
+ }
+});
+
+// Serve approved gallery media from repository-root assets under a stable, versioned path.
+const communityAssets = new Set(['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']);
+app.get('/community-assets/:asset', (req,res,next)=>{
+  const asset=req.params.asset;
+  if(!communityAssets.has(asset)) return res.sendStatus(404);
+  res.set('Cache-Control','public, max-age=86400, stale-while-revalidate=604800');
+  res.sendFile(path.resolve(__dirname,'..',asset), err=>{ if(err && !res.headersSent) next(err); });
+});
+// Backwards-compatible URLs for older page versions.
+for (const asset of communityAssets) app.get('/'+asset, (req,res)=>res.redirect(302,'/community-assets/'+asset));
+if (process.env.DATABASE_URL) await mountTelegramShop(app,pool);
+app.use(express.static(path.join(__dirname,'../public')));
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+const port=Number(process.env.PORT||3000);
+const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
+app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
++item.lineTotal.toFixed(2)),
+   '',
+   'Warenwert: '+total.toFixed(2),
+   '',
+   'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
+   'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
+  ];
+  // Optional direct email via SMTP. If SMTP is not configured, the checkout
+  // continues to the prepared mailto handoff; no email is claimed as sent.
+  const mailSubject='Shop-Bestellung '+orderNumber;
+  const mailText=lines.join('\\n');
+  let emailSent=false;
+  if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
+   const nodemailer=(await import('nodemailer')).default;
+   const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:mailSubject,text:mailText});
+   emailSent=true;
+  } else {
+   console.warn('SMTP not configured: order email will be prepared for the customer to send from their email app.');
+  }
+  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
+   console.warn('Telegram order notification skipped: credentials not configured.');
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\n'),disable_web_page_preview:true})
+  });
+  const tgData=await tg.json().catch(()=>({}));
+  if(!tg.ok||tgData.ok!==true){
+   console.error('Telegram order notification failed; email order was accepted:',tgData.description||tg.status);
+   // Email is the primary order channel; keep checkout successful if optional Telegram fails.
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  res.status(201).json({ok:true,orderNumber,total,items,emailSent});
+ }catch(e){
+  console.error('Shop order failed:',e.message);
+  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
+ }
+});
+
+// Serve approved gallery media from repository-root assets under a stable, versioned path.
+const communityAssets = new Set(['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']);
+app.get('/community-assets/:asset', (req,res,next)=>{
+  const asset=req.params.asset;
+  if(!communityAssets.has(asset)) return res.sendStatus(404);
+  res.set('Cache-Control','public, max-age=86400, stale-while-revalidate=604800');
+  res.sendFile(path.resolve(__dirname,'..',asset), err=>{ if(err && !res.headersSent) next(err); });
+});
+// Backwards-compatible URLs for older page versions.
+for (const asset of communityAssets) app.get('/'+asset, (req,res)=>res.redirect(302,'/community-assets/'+asset));
+if (process.env.DATABASE_URL) await mountTelegramShop(app,pool);
+app.use(express.static(path.join(__dirname,'../public')));
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+const port=Number(process.env.PORT||3000);
+const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
+app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
++total.toFixed(2),
+   '',
+   'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
+   'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
+  ];
+  // Optional direct email via SMTP. If SMTP is not configured, the checkout
+  // continues to the prepared mailto handoff; no email is claimed as sent.
+  const mailSubject='Shop-Bestellung '+orderNumber;
+  const mailText=lines.join('\\n');
+  let emailSent=false;
+  if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
+   const nodemailer=(await import('nodemailer')).default;
+   const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:mailSubject,text:mailText});
+   emailSent=true;
+  } else {
+   console.warn('SMTP not configured: order email will be prepared for the customer to send from their email app.');
+  }
+  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
+   console.warn('Telegram order notification skipped: credentials not configured.');
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\n'),disable_web_page_preview:true})
+  });
+  const tgData=await tg.json().catch(()=>({}));
+  if(!tg.ok||tgData.ok!==true){
+   console.error('Telegram order notification failed; email order was accepted:',tgData.description||tg.status);
+   // Email is the primary order channel; keep checkout successful if optional Telegram fails.
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  res.status(201).json({ok:true,orderNumber,total,items,emailSent});
+ }catch(e){
+  console.error('Shop order failed:',e.message);
+  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
+ }
+});
+
+// Serve approved gallery media from repository-root assets under a stable, versioned path.
+const communityAssets = new Set(['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']);
+app.get('/community-assets/:asset', (req,res,next)=>{
+  const asset=req.params.asset;
+  if(!communityAssets.has(asset)) return res.sendStatus(404);
+  res.set('Cache-Control','public, max-age=86400, stale-while-revalidate=604800');
+  res.sendFile(path.resolve(__dirname,'..',asset), err=>{ if(err && !res.headersSent) next(err); });
+});
+// Backwards-compatible URLs for older page versions.
+for (const asset of communityAssets) app.get('/'+asset, (req,res)=>res.redirect(302,'/community-assets/'+asset));
+if (process.env.DATABASE_URL) await mountTelegramShop(app,pool);
+app.use(express.static(path.join(__dirname,'../public')));
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+const port=Number(process.env.PORT||3000);
+const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
+app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
++item.unitPrice.toFixed(2)+' | Menge: '+item.quantity+' | Summe: 
+   '',
+   'Warenwert: '+total.toFixed(2),
+   '',
+   'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
+   'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
+  ];
+  // Optional direct email via SMTP. If SMTP is not configured, the checkout
+  // continues to the prepared mailto handoff; no email is claimed as sent.
+  const mailSubject='Shop-Bestellung '+orderNumber;
+  const mailText=lines.join('\\n');
+  let emailSent=false;
+  if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
+   const nodemailer=(await import('nodemailer')).default;
+   const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:mailSubject,text:mailText});
+   emailSent=true;
+  } else {
+   console.warn('SMTP not configured: order email will be prepared for the customer to send from their email app.');
+  }
+  if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
+   console.warn('Telegram order notification skipped: credentials not configured.');
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  const tg=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/sendMessage',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({chat_id:process.env.TELEGRAM_ADMIN_CHAT_ID,text:lines.join('\n'),disable_web_page_preview:true})
+  });
+  const tgData=await tg.json().catch(()=>({}));
+  if(!tg.ok||tgData.ok!==true){
+   console.error('Telegram order notification failed; email order was accepted:',tgData.description||tg.status);
+   // Email is the primary order channel; keep checkout successful if optional Telegram fails.
+   return res.status(201).json({ok:true,orderNumber,total,items,emailSent,telegramSent:false});
+  }
+  res.status(201).json({ok:true,orderNumber,total,items,emailSent});
+ }catch(e){
+  console.error('Shop order failed:',e.message);
+  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
+ }
+});
+
+// Serve approved gallery media from repository-root assets under a stable, versioned path.
+const communityAssets = new Set(['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']);
+app.get('/community-assets/:asset', (req,res,next)=>{
+  const asset=req.params.asset;
+  if(!communityAssets.has(asset)) return res.sendStatus(404);
+  res.set('Cache-Control','public, max-age=86400, stale-while-revalidate=604800');
+  res.sendFile(path.resolve(__dirname,'..',asset), err=>{ if(err && !res.headersSent) next(err); });
+});
+// Backwards-compatible URLs for older page versions.
+for (const asset of communityAssets) app.get('/'+asset, (req,res)=>res.redirect(302,'/community-assets/'+asset));
+if (process.env.DATABASE_URL) await mountTelegramShop(app,pool);
+app.use(express.static(path.join(__dirname,'../public')));
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Interner Fehler'});});
+const port=Number(process.env.PORT||3000);
+const schema=await readFile(path.join(__dirname,'schema.sql'),'utf8');
+if(process.env.DATABASE_URL) await pool.query(schema); else console.warn('DATABASE_URL missing: database features are disabled until configured.');
+app.listen(port,()=>console.log(`ROTHSHILD platform listening on ${port}`));
++item.lineTotal.toFixed(2)),
    '',
    'Warenwert: '+total.toFixed(2),
    '',
