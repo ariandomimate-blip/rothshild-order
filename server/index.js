@@ -135,10 +135,39 @@ app.post('/api/mentor-assignments/:id/respond',auth,async(req,res)=>{
 
 app.post('/api/mentor/request',auth,rateLimit({windowMs:60*60*1000,limit:4}),async(req,res)=>{const topic=clean(req.body.topic,140),message=clean(req.body.message,2500);if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte Thema und Nachricht eingeben.'});try{await notifyAdmins('Mentorenanfrage von '+req.user.display_name, 'Mitglied: '+req.user.display_name+' ('+req.user.email+')\nThema: '+topic+'\n\nAnfrage:\n'+message,req.user.email);res.status(201).json({ok:true,message:'Mentorenanfrage an die Administration gesendet.'});}catch(e){res.status(503).json({error:'E-Mail-Versand derzeit nicht verfügbar.'});}});
 app.get('/api/mentor-assignments',auth,async(req,res)=>{const r=await q('SELECT a.*,m.display_name AS member_name,t.display_name AS mentor_name FROM mentor_assignments a JOIN users m ON m.id=a.member_id JOIN users t ON t.id=a.mentor_id WHERE a.member_id=$1 OR a.mentor_id=$1 ORDER BY a.created_at DESC',[req.user.id]);res.json(r.rows);});
-// Fail closed: end-to-end encryption and key verification are not yet implemented or audited.
-// Do not accept or return message payloads that could be plaintext mislabeled as ciphertext.
-app.get('/api/conversations/:id/messages',auth,(req,res)=>res.status(503).json({error:'Private messaging is disabled until end-to-end encryption and key verification are implemented and independently reviewed.'}));
-app.post('/api/conversations/:id/messages',auth,(req,res)=>res.status(503).json({error:'Private messaging is disabled until end-to-end encryption and key verification are implemented and independently reviewed.'}));
+// Private mentor messaging. Messages are encrypted at rest with AES-256-GCM;
+// transport is protected by HTTPS and access is restricted to accepted conversation members.
+// This is server-side encryption, NOT end-to-end encryption.
+app.get('/api/conversations',auth,approved,async(req,res)=>{
+ try{
+  const r=await q(`SELECT c.id, other.display_name AS other_name, other.role AS other_role
+   FROM conversations c
+   JOIN mentor_assignments a ON a.id=c.assignment_id AND a.status='accepted'
+   JOIN conversation_members mine ON mine.conversation_id=c.id AND mine.user_id=$1
+   JOIN conversation_members theirs ON theirs.conversation_id=c.id AND theirs.user_id<>$1
+   JOIN users other ON other.id=theirs.user_id AND other.status='approved'
+   ORDER BY c.created_at DESC`,[req.user.id]);
+  res.json(r.rows);
+ }catch(e){console.error('Conversation list failed:',e.message);res.status(500).json({error:'Chats konnten nicht geladen werden.'});}
+});
+app.get('/api/conversations/:id/messages',auth,approved,async(req,res)=>{
+ try{
+  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'Kein Zugriff auf diesen Chat.'});
+  const r=await q('SELECT id,sender_id,ciphertext,created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id]);
+  const rows=r.rows.reverse().map(m=>({id:m.id,senderId:m.sender_id,text:decryptMessage(m.ciphertext),createdAt:m.created_at}));
+  res.json(rows);
+ }catch(e){console.error('Message read failed:',e.message);res.status(503).json({error:'Nachrichten sind derzeit nicht verfügbar. Bitte MESSAGE_ENCRYPTION_KEY (Base64-kodierter 32-Byte-Schlüssel) in Render prüfen.'});}
+});
+app.post('/api/conversations/:id/messages',auth,approved,rateLimit({windowMs:60*60*1000,limit:120,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
+ try{
+  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'Kein Zugriff auf diesen Chat.'});
+  const text=clean(req.body?.text,4000);
+  if(!text)return res.status(400).json({error:'Bitte eine Nachricht eingeben.'});
+  const ciphertext=encryptMessage(text);
+  const r=await q('INSERT INTO messages(conversation_id,sender_id,ciphertext) VALUES($1,$2,$3) RETURNING id,created_at',[req.params.id,req.user.id,ciphertext]);
+  res.status(201).json({id:r.rows[0].id,senderId:req.user.id,text,createdAt:r.rows[0].created_at});
+ }catch(e){console.error('Message send failed:',e.message);res.status(503).json({error:'Nachricht konnte nicht verschlüsselt gespeichert werden. Bitte MESSAGE_ENCRYPTION_KEY (Base64-kodierter 32-Byte-Schlüssel) in Render prüfen.'});}
+});
 
 // Public directory: only explicitly approved accounts are visible; never expose emails or password data.
 app.get('/api/profiles',async(req,res)=>{
