@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#090807"><title>Mein Profil · ROTHSHILD Order of Light</title>
@@ -31,4 +31,4 @@ $('avatarFile').addEventListener('change',async e=>{try{avatarData=await fileDat
 $('coverFile').addEventListener('change',async e=>{try{coverData=await fileData(e.target.files[0]);paint()}catch(err){$('status').textContent=err.message}});
 $('profileForm').addEventListener('submit',async e=>{e.preventDefault();$('status').textContent='Speichere …';try{const r=await fetch('/api/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({displayName:$('displayName').value,bio:$('bio').value,rank:$('rank').value,title:$('title').value,avatarData,coverData})});const d=await r.json();if(!r.ok)throw Error(d.error||'Speichern fehlgeschlagen');$('status').textContent='Profil gespeichert.'}catch(err){$('status').textContent=err.message}});
 load();
-</script><script>function googleTranslateElementInit(){new google.translate.TranslateElement({pageLanguage:'de',includedLanguages:'de,en,fr,es,it,pt,ru,zh-CN,ja,ar,hi,tr,nl,pl,ko,sv,uk,el,he,th,vi',autoDisplay:false,layout:google.translate.TranslateElement.InlineLayout.SIMPLE},'google_translate_element');}</script><script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script></body></html>
+</script><script src="/translator.js?v=20261106-en"></script></body></html>
