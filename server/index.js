@@ -34,7 +34,7 @@ function isAllowedBrowserOrigin(value,req){
   if(!incoming)return false;
   const actual=normalizedOrigin(req.protocol+'://'+req.get('host'));
   const configured=normalizedOrigin(process.env.APP_ORIGIN||'');
-  return incoming===actual || Boolean(configured&&incoming===configured);
+  return incoming===actual || renderOrigins.includes(incoming) || Boolean(configured&&incoming===configured);
 }
 app.use((req,res,next)=>{
   if(!['POST','PUT','PATCH','DELETE'].includes(req.method)) return next();
@@ -49,8 +49,8 @@ app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"scr
 app.use(cors({origin:(origin,callback)=>{
   if(!origin)return callback(null,false);
   const incoming=normalizedOrigin(origin),configured=normalizedOrigin(process.env.APP_ORIGIN||'');
-  const renderOrigin='https://the-house-of-rothshild-illuminati.onrender.com';
-  if(incoming&&(incoming===configured||incoming===renderOrigin))return callback(null,true);
+  const renderOrigins=['https://the-house-of-rothshild-illuminati.onrender.com','https://the-house-of-rothschild-illuminati.onrender.com'];
+  if(incoming&&(incoming===configured||incoming==='https://the-house-of-rothshild-illuminati.onrender.com'||incoming==='https://the-house-of-rothschild-illuminati.onrender.com'))return callback(null,true);
   return callback(null,false);
 },credentials:true}));
 app.use(express.json({limit:'2mb'})); app.use(cookieParser());
