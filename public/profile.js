@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);
-const API_ORIGIN='https://the-house-of-rothshild-illuminati.onrender.com';
+const API_ORIGIN='';
 let avatarData=null,coverData=null,user=null,profile={};
 async function api(path,opts={}){const token=sessionStorage.getItem('rothshild_session_token');const r=await fetch(API_ORIGIN+'/api'+path,{...opts,credentials:'include',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request failed');return d}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
