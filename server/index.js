@@ -100,6 +100,21 @@ app.post('/api/auth/login',async(req,res)=>{
  let u=r.rows[0];const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();if(u.email.toLowerCase()===ownerEmail&&u.status!=='approved'){const updated=await q("UPDATE users SET status='approved' WHERE id=$1 RETURNING id,email,display_name,role,status",[u.id]);if(updated.rowCount)u=updated.rows[0];}res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
  res.json({token:tokenFor(u),user:{id:u.id,email:u.email,displayName:u.display_name,role:u.role,status:u.status}});
 });
+
+app.post('/api/auth/password',auth,async(req,res)=>{
+ const currentPassword=String(req.body?.currentPassword||''),newPassword=String(req.body?.newPassword||'');
+ if(newPassword.length<12||newPassword.length>200)return res.status(400).json({error:'Das neue Passwort muss mindestens 12 Zeichen lang sein.'});
+ try{
+  const r=await q('SELECT password_hash FROM users WHERE id=$1',[req.user.id]);
+  if(!r.rowCount||!(await bcrypt.compare(currentPassword,r.rows[0].password_hash)))return res.status(400).json({error:'Das bisherige Passwort ist nicht korrekt.'});
+  if(await bcrypt.compare(newPassword,r.rows[0].password_hash))return res.status(400).json({error:'Das neue Passwort muss sich vom bisherigen unterscheiden.'});
+  const hash=await bcrypt.hash(newPassword,12);
+  await q('UPDATE users SET password_hash=$1 WHERE id=$2',[hash,req.user.id]);
+  await q('INSERT INTO security_audit_log(actor_user_id,action,target_user_id,details) VALUES($1,$2,$1,$3::jsonb)',[req.user.id,'account.password.changed',JSON.stringify({changedAt:new Date().toISOString()})]);
+  res.json({ok:true,message:'Passwort erfolgreich geändert.'});
+ }catch(e){console.error('Password change failed:',e.message);res.status(500).json({error:'Passwort konnte derzeit nicht geändert werden.'});}
+});
+
 app.post('/api/auth/logout',(req,res)=>res.clearCookie('session',cookieOpts).json({ok:true}));
 app.get('/api/me',auth,(req,res)=>res.json({user:req.user}));
 app.get('/api/forum/categories',auth,async(req,res)=>{const r=await q("SELECT * FROM forum_categories WHERE access_level='applicant' OR $1='approved' ORDER BY title",[req.user.status]);res.json(r.rows);});
