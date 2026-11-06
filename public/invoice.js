@@ -4,53 +4,54 @@ let o;
 try{o=JSON.parse(sessionStorage.getItem(key)||'null')}catch{}
 const box=document.querySelector('#invoice');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>'$'+Number(n||0).toFixed(2);
+const date=o?.orderCreatedAt?new Date(o.orderCreatedAt):new Date();
+const dateLabel=isNaN(date.getTime())?'—':date.toLocaleString('de-DE',{dateStyle:'long',timeStyle:'short'});
 if(!box)return;
 if(!o||!o.orderNumber){
  box.innerHTML='<p>Keine übermittelte Bestellanfrage gefunden. <a href="/shop.html">Zum Shop</a></p>';
 }else{
  const items=Array.isArray(o.items)?o.items:[];
- box.innerHTML='<h2>Bestellnummer '+esc(o.orderNumber)+'</h2><p><b>Name:</b> '+esc(o.customerName)+'<br><b>E-Mail:</b> '+esc(o.customerEmail)+'<br><b>Lieferadresse:</b> '+esc(o.customerAddress)+'</p><table><thead><tr><th>Produkt</th><th>Menge</th><th>Summe</th></tr></thead><tbody>'+items.map(i=>'<tr><td>'+esc(i.name)+'</td><td>'+Number(i.quantity||0)+'</td><td>$'+(Number(i.price||0)*Number(i.quantity||0)).toFixed(2)+'</td></tr>').join('')+'</tbody></table><h2>Warenwert: $'+Number(o.total||0).toFixed(2)+'</h2><section class="payment-wallet"><h2>Bitcoin-Zahlung (BTC)</h2><p>Nachfolgend finden Sie die Adresse, an die Sie Ihre Zahlung leisten sollen:</p><p class="wallet-address"><code>12RFpbxvFpWSzk6H3Y4faNRTf9vTzfVKPF</code></p><button type="button" id="copy-wallet">Wallet-Adresse kopieren</button><p>Bitte überweisen Sie erst nach Bestätigung des Endpreises und prüfen Sie die Adresse vor dem Senden. Die Zahlung gilt erst nach manueller Prüfung als bestätigt.</p></section><p>Status: Bestellanfrage übermittelt. Diese Übersicht ist keine Zahlungsbestätigung oder steuerliche Rechnung. Versandkosten und Endpreis werden noch bestätigt.</p>';
+ const total=items.reduce((sum,i)=>sum+Number(i.price||0)*Number(i.quantity||0),0);
+ const rows=items.map(i=>'<tr><td>'+esc(i.name)+'</td><td>'+money(i.price)+'</td><td>'+Number(i.quantity||0)+'</td><td>'+money(Number(i.price||0)*Number(i.quantity||0))+'</td></tr>').join('');
+ box.innerHTML='<div class="order-document" id="print-order"><div class="order-document-head"><div><p class="eyebrow">ROTHSHILD · ORDER OF LIGHT</p><h2>Bestellübersicht</h2><p>Unverbindliche Bestellanfrage – keine Zahlungsbestätigung oder steuerrechtliche Rechnung.</p></div><div class="order-number"><small>BESTELLNUMMER</small><strong>'+esc(o.orderNumber)+'</strong><small>Erstellt: '+esc(dateLabel)+'</small></div></div><hr><h3>Kundendaten</h3><p><b>Name:</b> '+esc(o.customerName)+'<br><b>E-Mail:</b> '+esc(o.customerEmail)+'<br><b>Lieferadresse:</b><br>'+esc(o.customerAddress).replace(/\n/g,'<br>')+'</p><h3>Bestellte Artikel</h3><table><thead><tr><th>Artikel</th><th>Einzelpreis</th><th>Menge</th><th>Summe</th></tr></thead><tbody>'+rows+'</tbody></table><div class="order-total"><span>Warenwert</span><strong>'+money(total)+'</strong></div><p><b>Versandkosten:</b> werden noch bestätigt<br><b>Endpreis:</b> noch offen<br><b>Status:</b> Bestellanfrage eingegangen – Verfügbarkeit und Preisprüfung ausstehend.</p><p class="muted">Bitte erst nach schriftlicher Bestätigung des endgültigen Gesamtpreises bezahlen.</p></div>';
+ const actions=document.createElement('div');actions.className='order-actions';actions.innerHTML='<button type="button" id="print-order-button" class="outline">Bestellübersicht drucken / als PDF speichern</button>';
+ box.appendChild(actions);
  const note=document.createElement('p');
- note.textContent=o.emailSent?'Die Bestell-E-Mail wurde vom Server versendet.':'Die E-Mail ist vorbereitet. Über den Button öffnet sich deine E-Mail-App mit allen Bestelldaten. Du kannst die Nachricht prüfen und selbst absenden.';
- note.setAttribute('role','status');
- box.appendChild(note);
+ note.textContent=o.emailSent?'Die Bestell-E-Mail wurde vom Server versendet.':'Die E-Mail ist vorbereitet. Prüfe die vollständig ausgefüllte Nachricht in deiner E-Mail-App und sende sie selbst ab.';
+ note.setAttribute('role','status');box.appendChild(note);
  const mail=document.querySelector('#email-order');
  if(mail){
-  const subject='ROTHSHILD Shop-Bestellung '+o.orderNumber;
   const body=[
-   'Guten Tag,',
-   '',
-   'hiermit leite ich meine Bestellanfrage weiter.',
+   'ROTHSHILD · ORDER OF LIGHT',
+   'BESTELLÜBERSICHT / UNVERBINDLICHE BESTELLANFRAGE',
    'Bestellnummer: '+o.orderNumber,
+   'Erstellt am: '+dateLabel,
+   '',
+   'KUNDENDATEN',
    'Name: '+(o.customerName||''),
-   'E-Mail des Kunden: '+(o.customerEmail||''),
+   'E-Mail: '+(o.customerEmail||''),
    'Lieferadresse: '+(o.customerAddress||''),
    '',
-   'Bestellte Artikel:',
-   ...items.map(i=>i.name+' × '+i.quantity+' — $'+(Number(i.price||0)*Number(i.quantity||0)).toFixed(2)),
+   'BESTELLTE ARTIKEL',
+   'Artikel | Einzelpreis | Menge | Summe',
+   ...items.map(i=>i.name+' | '+money(i.price)+' | '+i.quantity+' | '+money(Number(i.price||0)*Number(i.quantity||0))),
    '',
-   'Warenwert: $'+Number(o.total||0).toFixed(2),
+   'Warenwert: '+money(total),
+   'Versandkosten: werden noch bestätigt',
+   'Endpreis: noch offen',
+   'Status: Unverbindliche Bestellanfrage; Verfügbarkeit und Preisprüfung ausstehend.',
    '',
-   'Bitte bestätigen Sie Verfügbarkeit, Versandkosten und den endgültigen Gesamtpreis.',
+   'Bitte bestätigen Sie Verfügbarkeit, Versandkosten und den endgültigen Gesamtpreis schriftlich.',
+   'Diese Bestellübersicht ist keine steuerrechtliche Rechnung und keine Zahlungsbestätigung.',
    '',
    'Vielen Dank.'
   ].join('\n');
-  mail.href='mailto:rothschildofficial938@gmail.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
-  mail.textContent='Bestellung per E-Mail weiterleiten';
-  mail.setAttribute('aria-label','Vorbereitete Bestell-E-Mail an rothschildofficial938@gmail.com öffnen. Versand erfolgt erst nach Bestätigung durch den Nutzer.');
+  mail.href='mailto:rothschildofficial938@gmail.com?subject='+encodeURIComponent('ROTHSHILD Bestellübersicht '+o.orderNumber)+'&body='+encodeURIComponent(body);
+  mail.textContent='Bestellübersicht per E-Mail weiterleiten';
  }
+ document.querySelector('#print-order-button')?.addEventListener('click',()=>window.print());
 }
 const telegram=document.querySelector('#telegram-order');
-if(telegram){
- telegram.href='https://t.me/Rothshild_Bot';
- telegram.textContent='Zum Telegram-Bot @Rothshild_Bot';
- telegram.target='_blank';
- telegram.rel='noopener noreferrer';
- telegram.setAttribute('aria-label','Telegram-Bot @Rothshild_Bot öffnen');
-}
-document.querySelector('#copy-wallet')?.addEventListener('click',async()=>{
- const b=document.querySelector('#copy-wallet');
- try{await navigator.clipboard.writeText('12RFpbxvFpWSzk6H3Y4faNRTf9vTzfVKPF');b.textContent='Adresse kopiert';}
- catch{b.textContent='Bitte Adresse manuell kopieren';}
-});
+if(telegram){telegram.href='https://t.me/Rothshild_Bot';telegram.textContent='Zum Telegram-Bot @Rothshild_Bot';telegram.target='_blank';telegram.rel='noopener noreferrer';}
 })();
