@@ -220,7 +220,7 @@ app.post('/api/conversations/:id/messages',auth,approved,rateLimit({windowMs:60*
 });
 
 // Public directory: only explicitly approved accounts are visible; never expose emails or password data.
-app.get('/api/profiles',async(req,res)=>{
+app.get('/api/profiles',auth,async(req,res)=>{
  try{
   const r=await q("SELECT id,display_name,bio,profile_rank,profile_title,avatar_data,cover_data FROM users WHERE status='approved' ORDER BY created_at DESC LIMIT 100");
   res.json({profiles:r.rows.map(p=>({...p,rank:p.profile_rank,title:p.profile_title}))});
