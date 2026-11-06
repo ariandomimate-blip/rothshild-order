@@ -42,8 +42,8 @@ app.use((req,res,next)=>{
   // Telegram webhook authenticates requests with its secret-token header, not browser Origin.
   if(req.path==='/api/telegram/webhook') return next();
   const origin=req.get('origin');
-  if(prod && (!origin || !isAllowedBrowserOrigin(origin,req))) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
-  if(origin && !isAllowedBrowserOrigin(origin,req)) return res.status(403).json({error:'Ungültiger Anfrageursprung'});
+  if(prod && (!origin || !isAllowedBrowserOrigin(origin,req))) return res.status(403).json({error:'Invalid request origin'});
+  if(origin && !isAllowedBrowserOrigin(origin,req)) return res.status(403).json({error:'Invalid request origin'});
   next();
 });
 app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"script-src":["'self'"],"style-src":["'self'"],"img-src":["'self'","data:"],"connect-src":["'self'"],"object-src":["'none'"],"frame-ancestors":["'none'"]}}}));
@@ -61,42 +61,42 @@ const q=(s,v=[])=>pool.query(s,v);
 const cookieOpts={httpOnly:true,secure:prod || process.env.COOKIE_SECURE==='true',sameSite:'strict',path:'/'};
 function tokenFor(u){return jwt.sign({sub:u.id,role:u.role,status:u.status},process.env.JWT_SECRET,{expiresIn:'2h',issuer:'rothshild-platform'});}
 async function auth(req,res,next){
- try{const t=req.cookies.session;if(!t)return res.status(401).json({error:'Anmeldung erforderlich'});const p=jwt.verify(t,process.env.JWT_SECRET,{issuer:'rothshild-platform'});const r=await q('SELECT id,email,display_name,role,status FROM users WHERE id=$1',[p.sub]);if(!r.rowCount)return res.status(401).json({error:'Konto nicht gefunden'});req.user=r.rows[0];next();}catch{return res.status(401).json({error:'Sitzung ungültig oder abgelaufen'});}
+ try{const t=req.cookies.session;if(!t)return res.status(401).json({error:'Sign-in required'});const p=jwt.verify(t,process.env.JWT_SECRET,{issuer:'rothshild-platform'});const r=await q('SELECT id,email,display_name,role,status FROM users WHERE id=$1',[p.sub]);if(!r.rowCount)return res.status(401).json({error:'Konto nicht gefunden'});req.user=r.rows[0];next();}catch{return res.status(401).json({error:'Sitzung ungültig oder abgelaufen'});}
 }
-const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user.role)?next():res.status(403).json({error:'Keine Berechtigung'});
-const approved=(req,res,next)=>req.user.status==='approved'?next():res.status(403).json({error:'Mitgliedschaft noch nicht freigeschaltet'});
+const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user.role)?next():res.status(403).json({error:'Permission denied'});
+const approved=(req,res,next)=>req.user.status==='approved'?next():res.status(403).json({error:'Membership has not yet been approved'});
 const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
 function messageKey(){const raw=process.env.MESSAGE_ENCRYPTION_KEY||'';const key=Buffer.from(raw,'base64');if(key.length!==32)throw new Error('MESSAGE_ENCRYPTION_KEY must be a base64-encoded 32-byte key');return key;}
 function encryptMessage(plain){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',messageKey(),iv);const data=Buffer.concat([cipher.update(plain,'utf8'),cipher.final()]);return JSON.stringify({v:1,iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:data.toString('base64')});}
 function decryptMessage(value){const box=JSON.parse(value);if(box.v!==1)throw new Error('Unsupported encrypted message');const decipher=createDecipheriv('aes-256-gcm',messageKey(),Buffer.from(box.iv,'base64'));decipher.setAuthTag(Buffer.from(box.tag,'base64'));return Buffer.concat([decipher.update(Buffer.from(box.data,'base64')),decipher.final()]).toString('utf8');}
 async function isConversationMember(id,userId){const r=await q('SELECT 1 FROM conversation_members WHERE conversation_id=$1 AND user_id=$2',[id,userId]);return r.rowCount>0;}
 
-async function notifyAdmins(subject,text,replyTo){if(!process.env.SMTP_HOST||!process.env.SMTP_USER||!process.env.SMTP_PASS||!process.env.SMTP_FROM)throw new Error('SMTP nicht konfiguriert');const nodemailer=(await import('nodemailer')).default;const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});return transporter.sendMail({from:process.env.SMTP_FROM,to:'adiphenex@gmail.com',cc:'rothschildofficial938@gmail.com',replyTo,subject,text});}
+async function notifyAdmins(subject,text,replyTo){if(!process.env.SMTP_HOST||!process.env.SMTP_USER||!process.env.SMTP_PASS||!process.env.SMTP_FROM)throw new Error('SMTP is not configured');const nodemailer=(await import('nodemailer')).default;const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});return transporter.sendMail({from:process.env.SMTP_FROM,to:'adiphenex@gmail.com',cc:'rothschildofficial938@gmail.com',replyTo,subject,text});}
 
 app.get('/api/health',(req,res)=>res.json({ok:true}));
 app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
  const fullName=clean(req.body?.fullName,120),email=clean(req.body?.email,254).toLowerCase(),address=clean(req.body?.address,300),goals=clean(req.body?.goals,4000),motivation=clean(req.body?.motivation,4000);
- if(fullName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||address.length<5||goals.length<2||motivation.length<2)return res.status(400).json({error:'Bitte alle Pflichtfelder vollständig und mit gültiger E-Mail-Adresse ausfüllen.'});
- const body=['Neue Mitgliedschaftsbewerbung','', 'Vollständiger Name: '+fullName,'E-Mail-Adresse: '+email,'Anschrift: '+address,'','Persönliche Ziele:',goals,'','Motivation:',motivation].join('\\n');
+ if(fullName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||address.length<5||goals.length<2||motivation.length<2)return res.status(400).json({error:'Please complete all required fields and provide a valid email address.'});
+ const body=['New membership application','', 'Full name: '+fullName,'Email address: '+email,'Address: '+address,'','Personal goals:',goals,'','Motivation:',motivation].join('\\n');
  try{
-  await notifyAdmins('Mitgliedschaftsbewerbung – '+fullName,body,email);
-  return res.status(201).json({ok:true,message:'Deine Bewerbung wurde per E-Mail an die Administration übermittelt.'});
+  await notifyAdmins('Membership application – '+fullName,body,email);
+  return res.status(201).json({ok:true,message:'Your application has been emailed to the administration.'});
  }catch(e){
   console.error('Application email failed:',e.message);
-  return res.status(503).json({error:'Der direkte E-Mail-Versand ist gerade nicht verfügbar. Bitte nutze die vorbereitete E-Mail-App.'});
+  return res.status(503).json({error:'Direct email delivery is currently unavailable. Please use the prepared email in your email app.'});
  }
 });
 
 app.post('/api/auth/register',async(req,res)=>{
  const email=clean(req.body.email,254).toLowerCase(), name=clean(req.body.displayName,70), password=String(req.body.password||'');
- if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||name.length<2||password.length<12)return res.status(400).json({error:'Bitte gültige E-Mail, Anzeigename und Passwort mit mindestens 12 Zeichen angeben.'});
- try{const hash=await bcrypt.hash(password,12);const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();const status=email===ownerEmail?'approved':'pending';await q('INSERT INTO users(email,display_name,password_hash,status) VALUES($1,$2,$3,$4)',[email,name,hash,status]);res.status(201).json({message:status==='approved'?'Konto erstellt und freigeschaltet. Du kannst dich jetzt anmelden.':'Antrag eingegangen. Freischaltung durch die Administration erforderlich.'});}
- catch(e){res.status(e.code==='23505'?409:500).json({error:e.code==='23505'?'E-Mail bereits registriert':'Registrierung derzeit nicht möglich'});}
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||name.length<2||password.length<12)return res.status(400).json({error:'Please provide a valid email address, display name, and password of at least 12 characters.'});
+ try{const hash=await bcrypt.hash(password,12);const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();const status=email===ownerEmail?'approved':'pending';await q('INSERT INTO users(email,display_name,password_hash,status) VALUES($1,$2,$3,$4)',[email,name,hash,status]);res.status(201).json({message:status==='approved'?'Account created and approved. You can now sign in.':'Application received. Administrator approval is required.'});}
+ catch(e){res.status(e.code==='23505'?409:500).json({error:e.code==='23505'?'Email address is already registered':'Registration is currently unavailable'});}
 });
 app.post('/api/auth/login',async(req,res)=>{
  const email=clean(req.body.email,254).toLowerCase(), password=String(req.body.password||'');
  const r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE email=$1',[email]);
- if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({error:'Anmeldedaten ungültig'});
+ if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({error:'Invalid sign-in details'});
  let u=r.rows[0];const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();if(u.email.toLowerCase()===ownerEmail&&u.status!=='approved'){const updated=await q("UPDATE users SET status='approved' WHERE id=$1 RETURNING id,email,display_name,role,status",[u.id]);if(updated.rowCount)u=updated.rows[0];}res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
  res.json({user:{id:u.id,email:u.email,displayName:u.display_name,role:u.role,status:u.status}});
 });
@@ -108,10 +108,10 @@ app.get('/api/forum/posts',auth,async(req,res)=>{
 });
 app.post('/api/forum/posts',auth,async(req,res)=>{
  const title=clean(req.body.title,140),body=clean(req.body.body,5000),slug=clean(req.body.category,50);
- if(title.length<4||body.length<2)return res.status(400).json({error:'Titel und Text erforderlich'});
- const c=await q('SELECT id,access_level FROM forum_categories WHERE slug=$1',[slug]);if(!c.rowCount)return res.status(404).json({error:'Bereich nicht gefunden'});
- if(c.rows[0].access_level==='member'&&req.user.status!=='approved')return res.status(403).json({error:'Nur für freigeschaltete Mitglieder'});
- const r=await q('INSERT INTO forum_posts(category_id,author_id,title,body) VALUES($1,$2,$3,$4) RETURNING id',[c.rows[0].id,req.user.id,title,body]);try{await notifyAdmins('Neuer Forumsbeitrag: '+title,`Mitglied: ${req.user.display_name} (${req.user.email})\nBereich: ${slug}\nTitel: ${title}\n\n${body}` ,req.user.email)}catch(e){console.error('Forum notification mail failed:',e.message)}res.status(201).json({id:r.rows[0].id,notificationSent:true});
+ if(title.length<4||body.length<2)return res.status(400).json({error:'A title and message are required'});
+ const c=await q('SELECT id,access_level FROM forum_categories WHERE slug=$1',[slug]);if(!c.rowCount)return res.status(404).json({error:'Section not found'});
+ if(c.rows[0].access_level==='member'&&req.user.status!=='approved')return res.status(403).json({error:'Only approved members can access this area'});
+ const r=await q('INSERT INTO forum_posts(category_id,author_id,title,body) VALUES($1,$2,$3,$4) RETURNING id',[c.rows[0].id,req.user.id,title,body]);try{await notifyAdmins('Neuer Forumsbeitrag: '+title,`Member: ${req.user.display_name} (${req.user.email})\nBereich: ${slug}\nTitel: ${title}\n\n${body}` ,req.user.email)}catch(e){console.error('Forum notification mail failed:',e.message)}res.status(201).json({id:r.rows[0].id,notificationSent:true});
 });
 app.get('/api/library',auth,async(req,res)=>{const r=await q("SELECT id,title,topic,summary,body,source_note,visibility FROM library_items WHERE visibility='public' OR $1='approved' ORDER BY created_at DESC",[req.user.status]);res.json(r.rows);});
 app.get('/api/admin/users',auth,roles('admin','moderator'),async(req,res)=>{const r=await q('SELECT id,email,display_name,role,status,created_at FROM users ORDER BY created_at DESC LIMIT 300');res.json(r.rows);});
@@ -156,7 +156,7 @@ app.post('/api/mentor-assignments/:id/respond',auth,approved,async(req,res)=>{
  }catch(e){console.error('Mentor invitation response failed:',e.message);res.status(500).json({error:'Einladung konnte nicht verarbeitet werden.'});}
 });
 
-app.post('/api/mentor/request',auth,rateLimit({windowMs:60*60*1000,limit:4}),async(req,res)=>{const topic=clean(req.body.topic,140),message=clean(req.body.message,2500);if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte Thema und Nachricht eingeben.'});try{await notifyAdmins('Mentorenanfrage von '+req.user.display_name, 'Mitglied: '+req.user.display_name+' ('+req.user.email+')\nThema: '+topic+'\n\nAnfrage:\n'+message,req.user.email);res.status(201).json({ok:true,message:'Mentorenanfrage an die Administration gesendet.'});}catch(e){res.status(503).json({error:'E-Mail-Versand derzeit nicht verfügbar.'});}});
+app.post('/api/mentor/request',auth,rateLimit({windowMs:60*60*1000,limit:4}),async(req,res)=>{const topic=clean(req.body.topic,140),message=clean(req.body.message,2500);if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte Thema und Nachricht eingeben.'});try{await notifyAdmins('Mentor request from '+req.user.display_name, 'Member: '+req.user.display_name+' ('+req.user.email+')\nTopic: '+topic+'\n\nRequest:\n'+message,req.user.email);res.status(201).json({ok:true,message:'Mentor request sent to the administration.'});}catch(e){res.status(503).json({error:'Email delivery is currently unavailable.'});}});
 app.get('/api/mentor-assignments',auth,async(req,res)=>{const r=await q('SELECT a.*,m.display_name AS member_name,t.display_name AS mentor_name FROM mentor_assignments a JOIN users m ON m.id=a.member_id JOIN users t ON t.id=a.mentor_id WHERE a.member_id=$1 OR a.mentor_id=$1 ORDER BY a.created_at DESC',[req.user.id]);res.json(r.rows);});
 // Private mentor messaging. Messages are encrypted at rest with AES-256-GCM;
 // transport is protected by HTTPS and access is restricted to accepted conversation members.
@@ -171,25 +171,25 @@ app.get('/api/conversations',auth,approved,async(req,res)=>{
    JOIN users other ON other.id=theirs.user_id AND other.status='approved'
    ORDER BY c.created_at DESC`,[req.user.id]);
   res.json(r.rows);
- }catch(e){console.error('Conversation list failed:',e.message);res.status(500).json({error:'Chats konnten nicht geladen werden.'});}
+ }catch(e){console.error('Conversation list failed:',e.message);res.status(500).json({error:'Chats could not be loaded.'});}
 });
 app.get('/api/conversations/:id/messages',auth,approved,async(req,res)=>{
  try{
-  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'Kein Zugriff auf diesen Chat.'});
+  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'You do not have access to this chat.'});
   const r=await q('SELECT id,sender_id,ciphertext,created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id]);
   const rows=r.rows.reverse().map(m=>({id:m.id,senderId:m.sender_id,text:decryptMessage(m.ciphertext),createdAt:m.created_at}));
   res.json(rows);
- }catch(e){console.error('Message read failed:',e.message);res.status(503).json({error:'Nachrichten sind derzeit nicht verfügbar. Bitte MESSAGE_ENCRYPTION_KEY (Base64-kodierter 32-Byte-Schlüssel) in Render prüfen.'});}
+ }catch(e){console.error('Message read failed:',e.message);res.status(503).json({error:'Messages are currently unavailable. Check the MESSAGE_ENCRYPTION_KEY (Base64-encoded 32-byte key) in Render.'});}
 });
 app.post('/api/conversations/:id/messages',auth,approved,rateLimit({windowMs:60*60*1000,limit:120,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
  try{
-  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'Kein Zugriff auf diesen Chat.'});
+  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'You do not have access to this chat.'});
   const text=clean(req.body?.text,4000);
-  if(!text)return res.status(400).json({error:'Bitte eine Nachricht eingeben.'});
+  if(!text)return res.status(400).json({error:'Please enter a message.'});
   const ciphertext=encryptMessage(text);
   const r=await q('INSERT INTO messages(conversation_id,sender_id,ciphertext) VALUES($1,$2,$3) RETURNING id,created_at',[req.params.id,req.user.id,ciphertext]);
   res.status(201).json({id:r.rows[0].id,senderId:req.user.id,text,createdAt:r.rows[0].created_at});
- }catch(e){console.error('Message send failed:',e.message);res.status(503).json({error:'Nachricht konnte nicht verschlüsselt gespeichert werden. Bitte MESSAGE_ENCRYPTION_KEY (Base64-kodierter 32-Byte-Schlüssel) in Render prüfen.'});}
+ }catch(e){console.error('Message send failed:',e.message);res.status(503).json({error:'The message could not be encrypted and saved. Check the MESSAGE_ENCRYPTION_KEY (Base64-encoded 32-byte key) in Render.'});}
 });
 
 // Public directory: only explicitly approved accounts are visible; never expose emails or password data.
@@ -248,13 +248,13 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   const orderNumber=clean(req.body?.orderNumber,40);
   const rawItems=Array.isArray(req.body?.items)?req.body.items:[];
   if(customerName.length<2||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)||customerAddress.length<8||!/^RO-[0-9]{8}-[A-F0-9]{10}$/.test(orderNumber)||rawItems.length<1||rawItems.length>20){
-   return res.status(400).json({error:'Bitte Name, gültige E-Mail, vollständige Adresse, Bestellnummer und Warenkorb prüfen.'});
+   return res.status(400).json({error:'Please check the name, valid email address, full address, order number, and shopping cart.'});
   }
   const items=[];
   for(const item of rawItems){
    const name=clean(item?.name,100),quantity=Number(item?.quantity);
    if(!Object.hasOwn(SHOP_CATALOG,name)||!Number.isInteger(quantity)||quantity<1||quantity>25){
-    return res.status(400).json({error:'Ungültiges Produkt oder ungültige Menge im Warenkorb.'});
+    return res.status(400).json({error:'Invalid product or quantity in the shopping cart.'});
    }
    items.push({name,quantity,unitPrice:SHOP_CATALOG[name],lineTotal:SHOP_CATALOG[name]*quantity});
   }
@@ -262,30 +262,30 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   const createdAt=new Date();
   const lines=[
    'ROTHSHILD · ORDER OF LIGHT',
-   'BESTELLÜBERSICHT / UNVERBINDLICHE BESTELLANFRAGE',
-   'Bestellnummer: '+orderNumber,
-   'Erstellt am: '+createdAt.toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}),
+   'ORDER SUMMARY / NON-BINDING ORDER REQUEST',
+   'Order number: '+orderNumber,
+   'Created: '+createdAt.toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}),
    '',
-   'KUNDENDATEN',
+   'CUSTOMER DETAILS',
    'Name: '+customerName,
-   'E-Mail: '+customerEmail,
-   'Lieferadresse: '+customerAddress,
+   'Email: '+customerEmail,
+   'Shipping address: '+customerAddress,
    '',
-   'BESTELLTE ARTIKEL',
-   'Artikel | Einzelpreis | Menge | Summe',
+   'ORDERED ITEMS',
+   'Item | Unit price | Quantity | Total',
    ...items.map(item=>item.name+' | $'+item.unitPrice.toFixed(2)+' | '+item.quantity+' | $'+item.lineTotal.toFixed(2)),
    '',
-   'Warenwert: $'+total.toFixed(2),
-   'Versandkosten: werden noch bestätigt',
-   'Endpreis: noch offen',
+   'Subtotal: $'+total.toFixed(2),
+   'Shipping: to be confirmed',
+   'Final price: pending',
    '',
-   'Status: Unverbindliche Bestellanfrage; Verfügbarkeit und Preisprüfung ausstehend.',
-   'Diese Bestellübersicht ist keine steuerrechtliche Rechnung und keine Zahlungsbestätigung.',
-   'Bitte bestätigen Sie Verfügbarkeit, Versandkosten und den endgültigen Gesamtpreis schriftlich.'
+   'Status: Non-binding order request; availability and price review pending.',
+   'This order summary is not a tax invoice or payment confirmation.',
+   'Please confirm availability, shipping costs, and the final total in writing.'
   ];
   // Optional direct email via SMTP. If SMTP is not configured, the checkout
   // continues to the prepared mailto handoff; no email is claimed as sent.
-  const mailSubject='Shop-Bestellung '+orderNumber;
+  const mailSubject='Shop Order '+orderNumber;
   const mailText=lines.join('\n');
   let emailSent=false;
   if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
@@ -313,7 +313,7 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   res.status(201).json({ok:true,orderNumber,total,items,emailSent});
  }catch(e){
   console.error('Shop order failed:',e.message);
-  res.status(500).json({error:'Bestellung konnte nicht übermittelt werden.'});
+  res.status(500).json({error:'The order could not be submitted.'});
  }
 });
 
