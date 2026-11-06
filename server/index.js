@@ -259,7 +259,7 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
   // Optional direct email via SMTP. If SMTP is not configured, the checkout
   // continues to the prepared mailto handoff; no email is claimed as sent.
   const mailSubject='Shop-Bestellung '+orderNumber;
-  const mailText=lines.join('\\n');
+  const mailText=lines.join('\n');
   let emailSent=false;
   if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
    const nodemailer=(await import('nodemailer')).default;
