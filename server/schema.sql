@@ -63,3 +63,7 @@ CREATE INDEX IF NOT EXISTS profile_posts_author_created_idx ON profile_posts(aut
 
 ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS member_accepted_at TIMESTAMPTZ;
 ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS mentor_accepted_at TIMESTAMPTZ;
+
+-- Explicitly register the requested profile as an available mentor.
+-- Account approval remains unchanged and is still required by the public mentor picker.
+UPDATE users SET role='mentor' WHERE lower(trim(display_name))='querox' AND role<>'admin';
