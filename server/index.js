@@ -223,10 +223,16 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
  }
 });
 
-// Serve community gallery images and video from repository-root assets.
-for (const asset of ['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']) {
-  app.get('/'+asset, (req,res)=>res.sendFile(path.join(__dirname,'..',asset)));
-}
+// Serve approved gallery media from repository-root assets under a stable, versioned path.
+const communityAssets = new Set(['IMG_6328.jpeg','IMG_6334.jpeg','IMG_6335.jpeg','IMG_6336.jpeg','IMG_6337.jpeg','IMG_6338.jpeg','IMG_6339.jpeg','IMG_6374.jpeg','IMG_6376.jpeg','IMG_6377.jpeg','IMG_6378.jpeg','IMG_6382.jpeg','IMG_6383.jpeg','telegram_video.mp4']);
+app.get('/community-assets/:asset', (req,res,next)=>{
+  const asset=req.params.asset;
+  if(!communityAssets.has(asset)) return res.sendStatus(404);
+  res.set('Cache-Control','public, max-age=86400, stale-while-revalidate=604800');
+  res.sendFile(path.resolve(__dirname,'..',asset), err=>{ if(err && !res.headersSent) next(err); });
+});
+// Backwards-compatible URLs for older page versions.
+for (const asset of communityAssets) app.get('/'+asset, (req,res)=>res.redirect(302,'/community-assets/'+asset));
 if (process.env.DATABASE_URL) await mountTelegramShop(app,pool);
 app.use(express.static(path.join(__dirname,'../public')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'../public/index.html')));
