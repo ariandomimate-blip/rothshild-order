@@ -60,3 +60,6 @@ CREATE TABLE IF NOT EXISTS profile_posts (
  body TEXT NOT NULL CHECK (char_length(body) <= 1800), created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS profile_posts_author_created_idx ON profile_posts(author_id,created_at DESC);
+
+ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS member_accepted_at TIMESTAMPTZ;
+ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS mentor_accepted_at TIMESTAMPTZ;
