@@ -173,9 +173,36 @@ app.get('/api/conversations',auth,approved,async(req,res)=>{
   res.json(r.rows);
  }catch(e){console.error('Conversation list failed:',e.message);res.status(500).json({error:'Chats could not be loaded.'});}
 });
+// Member-side chat release: the mentor's first message is shown as the release phrase.
+// The member explicitly confirms before the API returns the rest of the conversation.
+app.get('/api/conversations/:id/unlock',auth,approved,async(req,res)=>{
+ try{
+  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'You do not have access to this chat.'});
+  const c=await q('SELECT a.member_id,a.mentor_id FROM conversations c JOIN mentor_assignments a ON a.id=c.assignment_id WHERE c.id=$1 AND a.status=$2',[req.params.id,'accepted']);
+  if(!c.rowCount)return res.status(404).json({error:'Chat not found.'});
+  if(req.user.id!==c.rows[0].member_id)return res.json({required:false,unlocked:true,firstMentorMessage:null});
+  const first=await q('SELECT id,ciphertext,created_at FROM messages WHERE conversation_id=$1 AND sender_id=$2 ORDER BY created_at ASC LIMIT 1',[req.params.id,c.rows[0].mentor_id]);
+  const saved=await q('SELECT 1 FROM conversation_unlocks WHERE conversation_id=$1 AND user_id=$2',[req.params.id,req.user.id]);
+  res.json({required:true,unlocked:saved.rowCount>0,firstMentorMessage:first.rowCount?{id:first.rows[0].id,text:decryptMessage(first.rows[0].ciphertext),createdAt:first.rows[0].created_at}:null});
+ }catch(e){console.error('Chat unlock status failed:',e.message);res.status(503).json({error:'Chat-Freigabe ist derzeit nicht verfügbar.'});}
+});
+app.post('/api/conversations/:id/unlock',auth,approved,async(req,res)=>{
+ try{
+  if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'You do not have access to this chat.'});
+  const c=await q('SELECT a.member_id,a.mentor_id FROM conversations c JOIN mentor_assignments a ON a.id=c.assignment_id WHERE c.id=$1 AND a.status=$2',[req.params.id,'accepted']);
+  if(!c.rowCount||req.user.id!==c.rows[0].member_id)return res.status(403).json({error:'Only the assigned member can confirm this release.'});
+  const first=await q('SELECT id FROM messages WHERE conversation_id=$1 AND sender_id=$2 ORDER BY created_at ASC LIMIT 1',[req.params.id,c.rows[0].mentor_id]);
+  if(!first.rowCount)return res.status(409).json({error:'Der Mentor muss zuerst eine Nachricht senden.'});
+  if(req.body?.confirm!==true)return res.status(400).json({error:'Bitte bestätige die Freigabe ausdrücklich.'});
+  await q('INSERT INTO conversation_unlocks(conversation_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[req.params.id,req.user.id]);
+  res.json({ok:true,unlocked:true});
+ }catch(e){console.error('Chat unlock confirmation failed:',e.message);res.status(500).json({error:'Chat konnte nicht freigegeben werden.'});}
+});
 app.get('/api/conversations/:id/messages',auth,approved,async(req,res)=>{
  try{
   if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'You do not have access to this chat.'});
+  const assignment=await q('SELECT a.member_id FROM conversations c JOIN mentor_assignments a ON a.id=c.assignment_id WHERE c.id=$1',[req.params.id]);
+  if(assignment.rowCount&&req.user.id===assignment.rows[0].member_id){const unlocked=await q('SELECT 1 FROM conversation_unlocks WHERE conversation_id=$1 AND user_id=$2',[req.params.id,req.user.id]);if(!unlocked.rowCount)return res.status(423).json({error:'Bitte bestätige zuerst die Freigabe der Mentor-Nachricht.'});}
   const r=await q('SELECT id,sender_id,ciphertext,created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id]);
   const rows=r.rows.reverse().map(m=>({id:m.id,senderId:m.sender_id,text:decryptMessage(m.ciphertext),createdAt:m.created_at}));
   res.json(rows);
