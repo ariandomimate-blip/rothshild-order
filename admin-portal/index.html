@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090807">
+<title>ROTHSHILD · Administration</title>
+<style>
+:root{color-scheme:dark;--bg:#090807;--panel:#100d09;--gold:#d6b66d;--cream:#f0e4ca;--line:#4b3921}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% 0,#25190b,var(--bg) 55%);color:var(--cream);font:16px/1.6 Georgia,serif}
+header{display:flex;align-items:center;justify-content:space-between;padding:20px clamp(18px,4vw,48px);border-bottom:1px solid var(--line);background:#080706}
+.brand{color:var(--gold);font-size:24px;letter-spacing:.16em;text-decoration:none}.brand small{display:block;color:#c7b58e;font-size:10px;letter-spacing:.22em}
+a{color:var(--gold)}main{width:min(1100px,100%);margin:42px auto;padding:0 18px}
+.eyebrow{color:var(--gold);letter-spacing:.28em;font:12px Arial,sans-serif;text-align:center}
+h1,h2{font-weight:400;color:#e4ce98}h1{text-align:center;font-size:clamp(34px,7vw,56px)}h2{font-size:26px}
+.panel{background:var(--panel);border:1px solid var(--line);padding:clamp(18px,3vw,28px);margin:22px 0}
+form{max-width:520px;margin:28px auto}.field{display:block;margin:14px 0;color:#cbbd9e}
+input,select{display:block;width:100%;margin-top:6px;padding:12px;background:#080706;color:var(--cream);border:1px solid #6d512b}
+button{padding:11px 18px;border:1px solid #e2c47c;background:linear-gradient(110deg,#986b2d,#e6c67a);color:#120d05;cursor:pointer;font:13px Arial,sans-serif;letter-spacing:.08em}
+button:disabled{opacity:.55;cursor:wait}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}.toolbar input,.toolbar select{flex:1;min-width:170px}
+.member{border-top:1px solid var(--line);padding:16px 0;display:grid;gap:10px}.member small,.muted{color:#b9aa8c}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions select{width:auto;min-width:135px;margin:0}
+#dashboard[hidden],#loginPanel[hidden]{display:none!important}
+.status{min-height:1.5em;color:#d6b66d;overflow-wrap:anywhere}
+footer{text-align:center;padding:32px;color:#b9aa8c;border-top:1px solid var(--line)}
+@media(max-width:560px){header{padding:15px}.brand{font-size:19px}.actions select{flex:1}}
+</style>
+</head>
+<body>
+<header><a class="brand" href="https://the-house-of-rothshild-illuminati.onrender.com/">♜ ROTHSHILD<small>ORDER OF LIGHT · ADMINISTRATION</small></a><a href="https://the-house-of-rothshild-illuminati.onrender.com/">Zur Hauptseite</a></header>
+<main>
+<p class="eyebrow">RESTRICTED ADMINISTRATOR AREA</p><h1>Administration</h1>
+<section id="loginPanel" class="panel">
+<h2>Anmeldung</h2><p class="muted">Nur freigegebene Administrator-Konten erhalten Zugriff. Die Berechtigung wird serverseitig geprüft.</p>
+<form id="loginForm"><label class="field">E-Mail-Adresse<input name="email" type="email" autocomplete="username" required></label><label class="field">Passwort<input name="password" type="password" autocomplete="current-password" required></label><button id="loginButton" type="submit">Sicher anmelden</button><p id="loginStatus" class="status" role="status"></p></form>
+</section>
+<section id="dashboard" hidden>
+<div class="panel"><div class="toolbar" style="justify-content:space-between"><div><h2>Mitgliederverwaltung</h2><p id="signedIn" class="muted"></p></div><button id="logoutButton" type="button">Abmelden</button></div>
+<div class="toolbar"><input id="filter" type="search" placeholder="Name, E-Mail oder Rolle filtern"><button id="refresh" type="button">Aktualisieren</button></div><p id="status" class="status" role="status"></p><div id="members"></div></div>
+<div class="panel"><h2>Mentoren zuweisen</h2><p class="muted">Nur freigegebene Konten. Der Chat wird erst nach Zustimmung von Mitglied und Mentor aktiviert.</p><div class="toolbar"><select id="assignMember"><option value="">Mitglied auswählen</option></select><select id="assignMentor"><option value="">Mentor auswählen</option></select><button id="assignButton" type="button">Mentor einladen</button></div><p id="assignStatus" class="status" role="status"></p></div>
+</section>
+</main><footer>ROTHSHILD · ORDER OF LIGHT</footer>
+<script src="/admin.js?v=20261106-1"></script>
+</body></html>
