@@ -246,13 +246,28 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
    'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
    'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
   ];
-  // Send the full order details to the configured shop mailbox.
-  if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
+  // Send order details to the Rothshild shop mailbox. Prefer HTTPS API delivery:
+  // Render Free services block outbound SMTP ports (25/465/587), so Resend works
+  // without requiring a paid Render instance. SMTP remains a fallback on paid services.
+  const mailSubject='Shop-Bestellung '+orderNumber;
+  const mailText=lines.join('\\n');
+  if(process.env.RESEND_API_KEY&&process.env.RESEND_FROM_EMAIL){
+   const mailResponse=await fetch('https://api.resend.com/emails',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({from:process.env.RESEND_FROM_EMAIL,to:['rothschildofficial938@gmail.com'],reply_to:customerEmail,subject:mailSubject,text:mailText})
+   });
+   const mailData=await mailResponse.json().catch(()=>({}));
+   if(!mailResponse.ok){
+    console.error('Resend order email failed:',mailData.message||mailData.name||mailResponse.status);
+    return res.status(502).json({error:'Die Bestellanfrage konnte nicht per E-Mail zugestellt werden. Bitte später erneut versuchen.'});
+   }
+  } else if(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM){
    const nodemailer=(await import('nodemailer')).default;
    const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
-   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:'Shop-Bestellung '+orderNumber,text:lines.join('\n')});
+   await transporter.sendMail({from:process.env.SMTP_FROM,to:'rothschildofficial938@gmail.com',replyTo:customerEmail,subject:mailSubject,text:mailText});
   } else {
-   return res.status(503).json({error:'E-Mail-Versand nicht konfiguriert. SMTP-Einstellungen in Render ergänzen.'});
+   return res.status(503).json({error:'E-Mail-Versand benötigt RESEND_API_KEY und RESEND_FROM_EMAIL in Render. SMTP ist auf kostenlosen Render-Webservices blockiert.'});
   }
   if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_ADMIN_CHAT_ID){
    console.warn('Telegram order notification skipped: credentials not configured.');
