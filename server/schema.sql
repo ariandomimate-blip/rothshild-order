@@ -87,7 +87,7 @@ BEGIN
   ELSE
     RAISE WARNING 'Multiple Querox accounts found (%); no administrator role changed.', querox_count;
   END IF;
-END $;
+END; $;
 
 -- Per-member confirmation that the first mentor message has been reviewed.
 CREATE TABLE IF NOT EXISTS conversation_unlocks (
