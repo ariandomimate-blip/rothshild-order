@@ -137,6 +137,21 @@ app.patch('/api/admin/users/:id',auth,roles('admin'),async(req,res)=>{
  const r=await q('UPDATE users SET status=COALESCE($1,status),role=COALESCE($2,role) WHERE id=$3 RETURNING id,email,display_name,role,status',[status,role,req.params.id]);
  if(!r.rowCount)return res.status(404).json({error:'Mitglied nicht gefunden'});await q('INSERT INTO security_audit_log(actor_user_id,action,target_user_id,details) VALUES($1,$2,$3,$4::jsonb)',[req.user.id,'admin.user.updated',r.rows[0].id,JSON.stringify({status:status||undefined,role:role||undefined})]);res.json(r.rows[0]);
 });
+app.get('/api/admin/mentor-assignments',auth,roles('admin','moderator'),async(req,res)=>{
+ try{
+  const r=await q(`SELECT a.id,a.status,a.created_at,a.member_id,a.mentor_id,m.display_name AS member_name,m.email AS member_email,t.display_name AS mentor_name,t.email AS mentor_email
+   FROM mentor_assignments a JOIN users m ON m.id=a.member_id JOIN users t ON t.id=a.mentor_id ORDER BY a.created_at DESC LIMIT 300`);
+  res.json(r.rows);
+ }catch(e){console.error('Admin mentor assignments failed:',e.message);res.status(500).json({error:'Mentor assignments could not be loaded.'});}
+});
+app.patch('/api/admin/mentor-assignments/:id',auth,roles('admin'),async(req,res)=>{
+ const status=['revoked','declined'].includes(req.body?.status)?req.body.status:null;
+ if(!status)return res.status(400).json({error:'Ungültiger Status.'});
+ const r=await q('UPDATE mentor_assignments SET status=$1 WHERE id=$2 RETURNING id,status',[status,req.params.id]);
+ if(!r.rowCount)return res.status(404).json({error:'Mentor-Anfrage nicht gefunden.'});
+ await q('INSERT INTO security_audit_log(actor_user_id,action,details) VALUES($1,$2,$3::jsonb)',[req.user.id,'admin.mentor_assignment.updated',JSON.stringify({assignmentId:req.params.id,status})]);
+ res.json(r.rows[0]);
+});
 app.post('/api/admin/mentor-assignments',auth,roles('admin'),async(req,res)=>{
  const member=clean(req.body.memberId,60),mentor=clean(req.body.mentorId,60);
  const m=await q("SELECT id FROM users WHERE id=$1 AND status='approved'",[member]),t=await q("SELECT id FROM users WHERE id=$1 AND status='approved' AND (role='mentor' OR lower(trim(display_name))='querox')",[mentor]);
@@ -173,6 +188,25 @@ app.post('/api/mentor-assignments/:id/respond',auth,approved,async(req,res)=>{
 
 app.post('/api/mentor/request',auth,rateLimit({windowMs:60*60*1000,limit:4}),async(req,res)=>{const topic=clean(req.body.topic,140),message=clean(req.body.message,2500);if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte Thema und Nachricht eingeben.'});try{await notifyAdmins('Mentor request from '+req.user.display_name, 'Member: '+req.user.display_name+' ('+req.user.email+')\nTopic: '+topic+'\n\nRequest:\n'+message,req.user.email);res.status(201).json({ok:true,message:'Mentor request sent to the administration.'});}catch(e){res.status(503).json({error:'Email delivery is currently unavailable.'});}});
 app.get('/api/mentor-assignments',auth,async(req,res)=>{const r=await q('SELECT a.*,m.display_name AS member_name,t.display_name AS mentor_name FROM mentor_assignments a JOIN users m ON m.id=a.member_id JOIN users t ON t.id=a.mentor_id WHERE a.member_id=$1 OR a.mentor_id=$1 ORDER BY a.created_at DESC',[req.user.id]);res.json(r.rows);});
+app.get('/api/mentors',auth,approved,async(req,res)=>{
+ try{
+  const r=await q("SELECT id,display_name,bio,profile_rank,profile_title,avatar_data,cover_data FROM users WHERE status='approved' AND (role='mentor' OR lower(trim(display_name))='querox') ORDER BY CASE WHEN lower(trim(display_name))='querox' THEN 0 ELSE 1 END,display_name");
+  res.json(r.rows.map(u=>({...u,rank:u.profile_rank,title:u.profile_title})));
+ }catch(e){console.error('Mentor directory failed:',e.message);res.status(500).json({error:'Mentor directory could not be loaded.'});}
+});
+app.post('/api/mentor-requests',auth,approved,rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
+ try{
+  const mentor=clean(req.body?.mentorId,60);
+  if(!mentor)return res.status(400).json({error:'Bitte wähle einen Mentor aus.'});
+  const t=await q("SELECT id FROM users WHERE id=$1 AND status='approved' AND (role='mentor' OR lower(trim(display_name))='querox')",[mentor]);
+  if(!t.rowCount)return res.status(404).json({error:'Dieser Mentor ist nicht verfügbar.'});
+  if(mentor===req.user.id)return res.status(400).json({error:'Du kannst dich nicht selbst als Mentor auswählen.'});
+  const existing=await q("SELECT id,status FROM mentor_assignments WHERE member_id=$1 AND mentor_id=$2",[req.user.id,mentor]);
+  if(existing.rowCount&&existing.rows[0].status==='accepted')return res.status(409).json({error:'Dieser Mentor-Chat ist bereits aktiv.'});
+  const r=await q("INSERT INTO mentor_assignments(member_id,mentor_id,assigned_by,status,member_accepted_at,mentor_accepted_at) VALUES($1,$2,$1,'invited',now(),NULL) ON CONFLICT(member_id,mentor_id) DO UPDATE SET assigned_by=EXCLUDED.assigned_by,status='invited',member_accepted_at=now(),mentor_accepted_at=NULL RETURNING id",[req.user.id,mentor]);
+  res.status(201).json({assignmentId:r.rows[0].id,status:'invited',message:'Anfrage gesendet. Der Chat wird nach Zustimmung des Mentors aktiviert.'});
+ }catch(e){console.error('Mentor self-request failed:',e.message);res.status(500).json({error:'Mentor request could not be created.'});}
+});
 // Private mentor messaging. Messages are encrypted at rest with AES-256-GCM;
 // transport is protected by HTTPS and access is restricted to accepted conversation members.
 // This is server-side encryption, NOT end-to-end encryption.
