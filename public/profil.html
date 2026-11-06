@@ -6,6 +6,16 @@
 <section class="member-hero"><p class="eyebrow">MITGLIEDERBEREICH</p><h1>Mitgliederprofil</h1><p>Dein persönlicher Platz in der Community.</p></section>
 <section class="social-profile-shell">
 <div id="status" class="panel profile-status">Profil wird geladen …</div>
+<section id="profileLogin" class="panel profile-login" hidden>
+<h2>Mitglieder-Anmeldung</h2>
+<p class="muted">Melde dich an, um dein Profil und deine Nachrichten zu öffnen.</p>
+<form id="profileLoginForm">
+<label>E-Mail-Adresse<input name="email" type="email" autocomplete="username" required></label>
+<label>Passwort<input name="password" type="password" autocomplete="current-password" required></label>
+<button class="gold" type="submit">Anmelden</button>
+<p id="profileLoginMsg" class="muted" role="status"></p>
+<a href="/index.html#account">Zur Registrierung</a>
+</form></section>
 <article class="social-profile panel" id="profileCard" hidden>
 <div class="social-cover" id="socialCover" role="img" aria-label="Titelbild"><img id="socialCoverImage" alt="" hidden></div>
 <div class="social-identity"><div class="avatar-wrap"><img id="socialAvatar" alt="Profilbild" hidden><div id="avatarFallback" class="avatar-fallback">♜</div></div><div class="social-details"><h2 id="socialName">Mitglied</h2><p id="socialMeta" class="social-meta"></p><p id="socialBio">Noch keine Beschreibung hinzugefügt.</p><p id="socialFriends" class="social-meta">Mitglied der Community</p></div></div>
@@ -30,4 +40,4 @@
 <section class="profile-about panel" id="aboutPane" hidden><h2>Profilinformationen</h2><dl><dt>Mitglied</dt><dd id="aboutName"></dd><dt>Rang</dt><dd id="aboutRank"></dd><dt>Titel</dt><dd id="aboutTitle"></dd><dt>Über mich</dt><dd id="aboutBio"></dd></dl><button class="outline" id="aboutEditBtn">Informationen bearbeiten</button></section>
 <section class="profile-about panel" id="photosPane" hidden><h2>Deine Fotos</h2><p class="muted">Dein Titelbild und Profilbild werden hier angezeigt.</p><div class="profile-photo-grid"><div><img id="photoCover" alt="Titelbild"><span>Titelbild</span></div><div><img id="photoAvatar" alt="Profilbild"><span>Profilbild</span></div></div><button class="outline" id="photoEditBtn">Fotos bearbeiten</button></section>
 <section class="panel mentor-box" id="mentorBox"><h2>Mentor anfragen</h2><form id="mentorRequest"><label>Thema<input name="topic" required maxlength="140" placeholder="Worum geht es?"></label><label>Nachricht<textarea name="message" required minlength="10" maxlength="2500"></textarea></label><button class="gold">Anfrage senden</button><p id="mentorMsg" class="muted"></p></form></section>
-</section></main><footer><b>♜ ROTHSHILD · ORDER OF LIGHT</b><span>Privatsphäre · Respekt · Freiwilligkeit</span></footer><script src="/profile.js?v=20261106-coverfix" defer></script><script src="/translator.js?v=20261106-en"></script></body></html>
+</section></main><footer><b>♜ ROTHSHILD · ORDER OF LIGHT</b><span>Privatsphäre · Respekt · Freiwilligkeit</span></footer><script src="/profile.js?v=20261106-loginfix" defer></script><script src="/translator.js?v=20261106-en"></script></body></html>
