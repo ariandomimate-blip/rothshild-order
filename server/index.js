@@ -232,19 +232,29 @@ app.post('/api/shop/orders',shopOrderLimit,async(req,res)=>{
    items.push({name,quantity,unitPrice:SHOP_CATALOG[name],lineTotal:SHOP_CATALOG[name]*quantity});
   }
   const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
+  const createdAt=new Date();
   const lines=[
-   'Neue Shop-Bestellanfrage',
-   'Bestellnummer: '+orderNumber,\n   'Erstellt am: '+new Date().toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}),\n   'Dokument: Bestellübersicht / unverbindliche Bestellanfrage (keine Rechnung im steuerrechtlichen Sinn)',
+   'ROTHSHILD · ORDER OF LIGHT',
+   'BESTELLÜBERSICHT / UNVERBINDLICHE BESTELLANFRAGE',
+   'Bestellnummer: '+orderNumber,
+   'Erstellt am: '+createdAt.toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}),
+   '',
+   'KUNDENDATEN',
    'Name: '+customerName,
    'E-Mail: '+customerEmail,
    'Lieferadresse: '+customerAddress,
    '',
-   ...items.map(item=>item.name+' | Einzelpreis: 
+   'BESTELLTE ARTIKEL',
+   'Artikel | Einzelpreis | Menge | Summe',
+   ...items.map(item=>item.name+' | $'+item.unitPrice.toFixed(2)+' | '+item.quantity+' | $'+item.lineTotal.toFixed(2)),
    '',
-   'Warenwert: 
+   'Warenwert: $'+total.toFixed(2),
+   'Versandkosten: werden noch bestätigt',
+   'Endpreis: noch offen',
    '',
-   'Status: Anfrage eingegangen; Zahlung und Verfügbarkeit sind NICHT bestätigt.',
-   'Bitte Versandkosten und Endpreis vor einer Zahlungsaufforderung bestätigen.'
+   'Status: Unverbindliche Bestellanfrage; Verfügbarkeit und Preisprüfung ausstehend.',
+   'Diese Bestellübersicht ist keine steuerrechtliche Rechnung und keine Zahlungsbestätigung.',
+   'Bitte bestätigen Sie Verfügbarkeit, Versandkosten und den endgültigen Gesamtpreis schriftlich.'
   ];
   // Optional direct email via SMTP. If SMTP is not configured, the checkout
   // continues to the prepared mailto handoff; no email is claimed as sent.
