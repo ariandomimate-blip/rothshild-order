@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS mentor_assignments (
  assigned_by UUID REFERENCES users(id), status TEXT NOT NULL DEFAULT 'invited' CHECK (status IN ('invited','accepted','declined','revoked')),
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(member_id, mentor_id)
 );
+ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS member_accepted_at TIMESTAMPTZ;
+ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS mentor_accepted_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS conversations (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), assignment_id UUID REFERENCES mentor_assignments(id), created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
