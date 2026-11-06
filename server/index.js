@@ -201,6 +201,33 @@ app.get('/api/profiles',async(req,res)=>{
 });
 app.get('/api/profile',auth,async(req,res)=>{const r=await q('SELECT display_name,bio,profile_rank,profile_title,avatar_data,cover_data FROM users WHERE id=$1',[req.user.id]);if(!r.rowCount)return res.status(404).json({error:'Profil nicht gefunden'});const p=r.rows[0];res.json({profile:{...p,rank:p.profile_rank,title:p.profile_title}});});
 app.patch('/api/profile',auth,async(req,res)=>{const name=clean(req.body.displayName,70),bio=clean(req.body.bio,1200),rank=clean(req.body.rank,100),title=clean(req.body.title,100),avatar=String(req.body.avatarData||''),cover=String(req.body.coverData||'');const validImage=v=>!v||(v.length<1250000&&/^data:image\/(png|jpeg|webp|gif);base64,/.test(v));if(name.length<2||!validImage(avatar)||!validImage(cover))return res.status(400).json({error:'Name oder Bildformat/-größe ungültig'});await q('UPDATE users SET display_name=$1,bio=$2,profile_rank=$3,profile_title=$4,avatar_data=$5,cover_data=$6 WHERE id=$7',[name,bio,rank,title,avatar||null,cover||null,req.user.id]);res.json({ok:true});});
+// Profile timeline / community feed. Only approved members' posts are public to signed-in users;
+// applicants can still see their own posts while their membership is pending.
+app.get('/api/profile/posts',auth,async(req,res)=>{
+ try{
+  const r=await q(`SELECT p.id,p.body,p.created_at,u.display_name,u.avatar_data
+   FROM profile_posts p JOIN users u ON u.id=p.author_id
+   WHERE u.status='approved' OR p.author_id=$1
+   ORDER BY p.created_at DESC LIMIT 100`,[req.user.id]);
+  res.json(r.rows);
+ }catch(e){console.error('Profile posts load failed:',e.message);res.status(500).json({error:'Community-Beiträge konnten nicht geladen werden.'});}
+});
+app.post('/api/profile/posts',auth,rateLimit({windowMs:60*60*1000,limit:30,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
+ try{
+  const body=clean(req.body?.body,1800);
+  if(body.length<2)return res.status(400).json({error:'Bitte schreibe einen Beitrag mit mindestens 2 Zeichen.'});
+  const r=await q('INSERT INTO profile_posts(author_id,body) VALUES($1,$2) RETURNING id,body,created_at',[req.user.id,body]);
+  res.status(201).json({post:r.rows[0]});
+ }catch(e){console.error('Profile post publish failed:',e.message);res.status(500).json({error:'Beitrag konnte nicht gespeichert werden. Bitte erneut versuchen.'});}
+});
+app.delete('/api/profile/posts/:id',auth,async(req,res)=>{
+ try{
+  const r=await q('DELETE FROM profile_posts WHERE id=$1 AND author_id=$2 RETURNING id',[req.params.id,req.user.id]);
+  if(!r.rowCount)return res.status(404).json({error:'Beitrag nicht gefunden oder du bist nicht der Verfasser.'});
+  res.json({ok:true});
+ }catch(e){console.error('Profile post delete failed:',e.message);res.status(500).json({error:'Beitrag konnte nicht gelöscht werden.'});}
+});
+
 app.post('/api/mentor/ai-chat',auth,async(req,res)=>{const message=clean(req.body.message,4000);if(!message)return res.status(400).json({error:'Nachricht fehlt'});if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'KI-Mentor noch nicht aktiviert: OPENAI_API_KEY in Render setzen.'});try{const response=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-4o-mini',messages:[{role:'system',content:'Du bist ein KI-Mentor mit ruhigem, erleuchtetem, spirituell-mystischem und philosophischem Charakter. Antworte warm, respektvoll und kritisch denkend. Unterscheide belegte Geschichte von Legenden und Spekulationen. Behaupte keine geheimen Mächte oder gesicherte Mitgliedschaft. Du bist eine KI, kein menschlicher Mentor oder Therapeut.'},{role:'user',content:message}],temperature:0.7})});const data=await response.json();if(!response.ok)throw Error(data.error?.message||'KI-Anfrage fehlgeschlagen');res.json({reply:data.choices?.[0]?.message?.content||'Ich kann darauf gerade nicht antworten.'})}catch(e){res.status(502).json({error:'KI-Mentor derzeit nicht erreichbar.'});}});
 
 
