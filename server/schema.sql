@@ -71,7 +71,7 @@ UPDATE users SET role='mentor' WHERE lower(trim(display_name))='querox' AND role
 
 -- Administrator designation explicitly requested for the unique Querox profile.
 -- Promote only when exactly one matching account exists; never guess among duplicates.
-DO $
+DO $$
 DECLARE querox_count INTEGER;
 BEGIN
   SELECT COUNT(*) INTO querox_count
@@ -87,7 +87,7 @@ BEGIN
   ELSE
     RAISE WARNING 'Multiple Querox accounts found (%); no administrator role changed.', querox_count;
   END IF;
-END; $;
+END; $$;
 
 -- Per-member confirmation that the first mentor message has been reviewed.
 CREATE TABLE IF NOT EXISTS conversation_unlocks (
