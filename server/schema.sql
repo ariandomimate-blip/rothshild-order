@@ -67,3 +67,12 @@ ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS mentor_accepted_at TIMES
 -- Explicitly register the requested profile as an available mentor.
 -- Account approval remains unchanged and is still required by the public mentor picker.
 UPDATE users SET role='mentor' WHERE lower(trim(display_name))='querox' AND role<>'admin';
+
+
+-- Per-member confirmation that the first mentor message has been reviewed.
+CREATE TABLE IF NOT EXISTS conversation_unlocks (
+ conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+ user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ unlocked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(conversation_id,user_id)
+);
