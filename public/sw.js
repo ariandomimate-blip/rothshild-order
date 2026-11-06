@@ -1,4 +1,4 @@
-const CACHE='order-of-light-shell-v4';
+const CACHE='order-of-light-shell-v5-media-local';
 const SHELL=['/','/style.css?v=20261105r7','/app.js?v=20261105r7','/manifest.webmanifest?v=20261105r7'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
