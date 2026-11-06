@@ -14,7 +14,7 @@ if(!o||!o.orderNumber){
  const items=Array.isArray(o.items)?o.items:[];
  const total=items.reduce((sum,i)=>sum+Number(i.price||0)*Number(i.quantity||0),0);
  const rows=items.map(i=>'<tr><td>'+esc(i.name)+'</td><td>'+money(i.price)+'</td><td>'+Number(i.quantity||0)+'</td><td>'+money(Number(i.price||0)*Number(i.quantity||0))+'</td></tr>').join('');
- box.innerHTML='<div class="order-document" id="print-order"><div class="order-document-head"><div><p class="eyebrow">ROTHSHILD · ORDER OF LIGHT</p><h2>Order Summary</h2><p>Non-binding order request — not a payment confirmation or tax invoice.</p></div><div class="order-number"><small>ORDER NUMBER</small><strong>'+esc(o.orderNumber)+'</strong><small>Created: '+esc(dateLabel)+'</small></div></div><hr><h3>Customer Details</h3><p><b>Name:</b> '+esc(o.customerName)+'<br><b>E-Mail:</b> '+esc(o.customerEmail)+'<br><b>Lieferadresse:</b><br>'+esc(o.customerAddress).replace(/\n/g,'<br>')+'</p><h3>Ordered Items</h3><table><thead><tr><th>Artikel</th><th>Unit Price</th><th>Quantity</th><th>Total</th></tr></thead><tbody>'+rows+'</tbody></table><div class="order-total"><span>Subtotal</span><strong>'+money(total)+'</strong></div><p><b>Shipping:</b> to be confirmed<br><b>Final price:</b> pending<br><b>Status:</b> Order request received — availability and price review pending.</p><p class="muted">Please do not pay until the final total has been confirmed in writing.</p></div>';
+ box.innerHTML='<div class="order-document" id="print-order"><div class="order-document-head"><div><p class="eyebrow">ROTHSHILD · ORDER OF LIGHT</p><h2>Order Summary</h2><p>Non-binding order request — not a payment confirmation or tax invoice.</p></div><div class="order-number"><small>ORDER NUMBER</small><strong>'+esc(o.orderNumber)+'</strong><small>Created: '+esc(dateLabel)+'</small></div></div><hr><h3>Customer Details</h3><p><b>Name:</b> '+esc(o.customerName)+'<br><b>Email:</b> '+esc(o.customerEmail)+'<br><b>Shipping address:</b><br>'+esc(o.customerAddress).replace(/\n/g,'<br>')+'</p><h3>Ordered Items</h3><table><thead><tr><th>Item</th><th>Unit Price</th><th>Quantity</th><th>Total</th></tr></thead><tbody>'+rows+'</tbody></table><div class="order-total"><span>Subtotal</span><strong>'+money(total)+'</strong></div><p><b>Shipping:</b> to be confirmed<br><b>Final price:</b> pending<br><b>Status:</b> Order request received — availability and price review pending.</p><p class="muted">Please do not pay until the final total has been confirmed in writing.</p></div>';
  const actions=document.createElement('div');actions.className='order-actions';actions.innerHTML='<button type="button" id="print-order-button" class="outline">Print order summary / Save as PDF</button>';
  box.appendChild(actions);
  const note=document.createElement('p');
@@ -30,8 +30,8 @@ if(!o||!o.orderNumber){
    '',
    'CUSTOMER DETAILS',
    'Name: '+(o.customerName||''),
-   'E-Mail: '+(o.customerEmail||''),
-   'Lieferadresse: '+(o.customerAddress||''),
+   'Email: '+(o.customerEmail||''),
+   'Shipping address: '+(o.customerAddress||''),
    '',
    'ORDERED ITEMS',
    'Item | Unit price | Quantity | Total',
@@ -48,10 +48,10 @@ if(!o||!o.orderNumber){
    'Thank you.'
   ].join('\n');
   mail.href='mailto:rothschildofficial938@gmail.com?subject='+encodeURIComponent('ROTHSHILD Order Summary '+o.orderNumber)+'&body='+encodeURIComponent(body);
-  mail.textContent='Bestellübersicht per E-Mail weiterleiten';
+  mail.textContent='Forward order summary by email';
  }
  document.querySelector('#print-order-button')?.addEventListener('click',()=>window.print());
 }
 const telegram=document.querySelector('#telegram-order');
-if(telegram){telegram.href='https://t.me/Rothshild_Bot';telegram.textContent='Zum Telegram-Bot @Rothshild_Bot';telegram.target='_blank';telegram.rel='noopener noreferrer';}
+if(telegram){telegram.href='https://t.me/Rothshild_Bot';telegram.textContent='Open Telegram bot @Rothshild_Bot';telegram.target='_blank';telegram.rel='noopener noreferrer';}
 })();
