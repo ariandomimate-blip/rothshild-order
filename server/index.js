@@ -28,6 +28,7 @@ app.set('trust proxy',1);
 // Render terminates TLS at its edge. Compare writes against the actual request origin
 // (the deployed host) and the optional configured canonical origin to avoid false 403s
 // when a Render alias/custom domain is used, while still rejecting cross-site requests.
+const renderOrigins=['https://the-house-of-rothshild-illuminati.onrender.com','https://the-house-of-rothschild-illuminati.onrender.com'];
 function normalizedOrigin(value){try{return new URL(value).origin;}catch{return null;}}
 function isAllowedBrowserOrigin(value,req){
   const incoming=normalizedOrigin(value);
@@ -49,8 +50,7 @@ app.use(helmet({contentSecurityPolicy:{directives:{"default-src":["'self'"],"scr
 app.use(cors({origin:(origin,callback)=>{
   if(!origin)return callback(null,false);
   const incoming=normalizedOrigin(origin),configured=normalizedOrigin(process.env.APP_ORIGIN||'');
-  const renderOrigins=['https://the-house-of-rothshild-illuminati.onrender.com','https://the-house-of-rothschild-illuminati.onrender.com'];
-  if(incoming&&(incoming===configured||incoming==='https://the-house-of-rothshild-illuminati.onrender.com'||incoming==='https://the-house-of-rothschild-illuminati.onrender.com'))return callback(null,true);
+  if(incoming&&(incoming===configured||renderOrigins.includes(incoming)))return callback(null,true);
   return callback(null,false);
 },credentials:true}));
 app.use(express.json({limit:'2mb'})); app.use(cookieParser());
