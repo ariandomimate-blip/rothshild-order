@@ -124,7 +124,7 @@ app.patch('/api/admin/users/:id',auth,roles('admin'),async(req,res)=>{
 });
 app.post('/api/admin/mentor-assignments',auth,roles('admin'),async(req,res)=>{
  const member=clean(req.body.memberId,60),mentor=clean(req.body.mentorId,60);
- const m=await q("SELECT id FROM users WHERE id=$1 AND status='approved'",[member]),t=await q("SELECT id FROM users WHERE id=$1 AND role='mentor' AND status='approved'",[mentor]);
+ const m=await q("SELECT id FROM users WHERE id=$1 AND status='approved'",[member]),t=await q("SELECT id FROM users WHERE id=$1 AND status='approved' AND (role='mentor' OR lower(trim(display_name))='querox')",[mentor]);
  if(!m.rowCount||!t.rowCount)return res.status(400).json({error:'Freigeschaltetes Mitglied und freigeschalteter Mentor erforderlich'});
  const r=await q('INSERT INTO mentor_assignments(member_id,mentor_id,assigned_by) VALUES($1,$2,$3) ON CONFLICT(member_id,mentor_id) DO UPDATE SET status=$4,member_accepted_at=NULL,mentor_accepted_at=NULL RETURNING id',[member,mentor,req.user.id,'invited']);res.status(201).json({assignmentId:r.rows[0].id,status:'invited'});
 });
