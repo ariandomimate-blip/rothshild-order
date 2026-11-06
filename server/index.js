@@ -58,7 +58,7 @@ app.use('/api/auth',rateLimit({windowMs:15*60*1000,limit:8,standardHeaders:true,
 app.use('/api/admin',rateLimit({windowMs:60*1000,limit:30,standardHeaders:true,legacyHeaders:false}));
 app.use('/api/conversations',rateLimit({windowMs:60*1000,limit:40,standardHeaders:true,legacyHeaders:false}));
 const q=(s,v=[])=>pool.query(s,v);
-const cookieOpts={httpOnly:true,secure:prod || process.env.COOKIE_SECURE==='true',sameSite:'strict',path:'/'};
+const cookieOpts={httpOnly:true,secure:prod || process.env.COOKIE_SECURE==='true',sameSite:prod?'none':'strict',path:'/'};
 function tokenFor(u){return jwt.sign({sub:u.id,role:u.role,status:u.status},process.env.JWT_SECRET,{expiresIn:'2h',issuer:'rothshild-platform'});}
 async function auth(req,res,next){
  try{const t=req.cookies.session;if(!t)return res.status(401).json({error:'Sign-in required'});const p=jwt.verify(t,process.env.JWT_SECRET,{issuer:'rothshild-platform'});const r=await q('SELECT id,email,display_name,role,status FROM users WHERE id=$1',[p.sub]);if(!r.rowCount)return res.status(401).json({error:'Konto nicht gefunden'});req.user=r.rows[0];next();}catch{return res.status(401).json({error:'Sitzung ungültig oder abgelaufen'});}
