@@ -28,7 +28,7 @@ app.set('trust proxy',1);
 // Render terminates TLS at its edge. Compare writes against the actual request origin
 // (the deployed host) and the optional configured canonical origin to avoid false 403s
 // when a Render alias/custom domain is used, while still rejecting cross-site requests.
-const renderOrigins=['https://the-house-of-rothshild-illuminati.onrender.com','https://the-house-of-rothschild-illuminati.onrender.com','https://rothshild-illuminati-admin.onrender.com'];
+const renderOrigins=['https://the-house-of-rothshild-illuminati.onrender.com','https://the-house-of-rothschild-illuminati.onrender.com','https://rothshild-illuminati-admin.onrender.com','https://rothshild-illuminati-admin-fvu5.onrender.com'];
 function normalizedOrigin(value){try{return new URL(value).origin;}catch{return null;}}
 function isAllowedBrowserOrigin(value,req){
   const incoming=normalizedOrigin(value);
