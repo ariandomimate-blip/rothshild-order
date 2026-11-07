@@ -98,3 +98,11 @@ CREATE TABLE IF NOT EXISTS conversation_unlocks (
  unlocked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  PRIMARY KEY(conversation_id,user_id)
 );
+
+-- Existing accepted mentor chats are also open to both participants.
+INSERT INTO conversation_unlocks(conversation_id,user_id)
+SELECT cm.conversation_id,cm.user_id
+FROM conversation_members cm
+JOIN conversations c ON c.id=cm.conversation_id
+JOIN mentor_assignments a ON a.id=c.assignment_id AND a.status='accepted'
+ON CONFLICT DO NOTHING;
