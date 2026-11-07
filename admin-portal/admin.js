@@ -1,4 +1,4 @@
-const API='https://the-house-of-rothshild-illuminati.onrender.com/api';
+const API='https://the-house-of-rothshild.onrender.com/api';
 const $=id=>document.getElementById(id);let token='',records=[],assignments=[];
 async function api(path,options={}){const headers={'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}) ,...(options.headers||{})};const r=await fetch(API+path,{...options,headers,credentials:'omit'});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'Anfrage fehlgeschlagen');return data}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
