@@ -181,6 +181,8 @@ app.post('/api/mentor-assignments/:id/respond',auth,approved,async(req,res)=>{
    let conversationId=c.rows[0]?.id;
    if(!conversationId){const created=await q('INSERT INTO conversations(assignment_id) VALUES($1) RETURNING id',[a.id]);conversationId=created.rows[0].id;}
    await q('INSERT INTO conversation_members(conversation_id,user_id) VALUES($1,$2),($1,$3) ON CONFLICT DO NOTHING',[conversationId,a.member_id,a.mentor_id]);
+   // Once both participants accept the mentor request, the complete conversation is open to both.
+   await q('INSERT INTO conversation_unlocks(conversation_id,user_id) VALUES($1,$2),($1,$3) ON CONFLICT DO NOTHING',[conversationId,a.member_id,a.mentor_id]);
   }
   res.json({status:a.status,waitingForOther:a.status==='invited'&&accept});
  }catch(e){console.error('Mentor invitation response failed:',e.message);res.status(500).json({error:'Einladung konnte nicht verarbeitet werden.'});}
@@ -251,7 +253,7 @@ app.get('/api/conversations/:id/messages',auth,approved,async(req,res)=>{
  try{
   if(!await isConversationMember(req.params.id,req.user.id))return res.status(403).json({error:'You do not have access to this chat.'});
   const assignment=await q('SELECT a.member_id FROM conversations c JOIN mentor_assignments a ON a.id=c.assignment_id WHERE c.id=$1',[req.params.id]);
-  if(assignment.rowCount&&req.user.id===assignment.rows[0].member_id){const unlocked=await q('SELECT 1 FROM conversation_unlocks WHERE conversation_id=$1 AND user_id=$2',[req.params.id,req.user.id]);if(!unlocked.rowCount)return res.status(423).json({error:'Bitte bestätige zuerst die Freigabe der Mentor-Nachricht.'});}
+  // The chat is available to both participants as soon as the mentor assignment is accepted.
   const r=await q('SELECT id,sender_id,ciphertext,created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id]);
   const rows=r.rows.reverse().map(m=>({id:m.id,senderId:m.sender_id,text:decryptMessage(m.ciphertext),createdAt:m.created_at}));
   res.json(rows);
