@@ -92,7 +92,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
         : session.state==='txid'&&session.pending_order
           ? '\n\n🧾 Your order '+session.pending_order+' is open. Use “Order / Submit TXID” to submit your transaction ID.'
           : '';
-    const welcome='👑 WELCOME TO THE HOUSE OF ROTHSCHILD\n\nWelcome to the House of Rothschild assistant. Explore the website and collection, manage your orders, submit a Bitcoin transaction ID (TXID) for manual review, or apply for membership.\n\n🏛 Explore the website\n🛍 Browse the shop and manage your cart\n📦 Manage orders and submit a TXID\n🧾 Invoice after manual payment confirmation\n🤝 Apply for membership\n\nChoose an option below to continue. Payments are marked as confirmed only after manual verification.''+activeNote;
+    const welcome='👑 WELCOME TO THE HOUSE OF ROTHSCHILD\n\nWelcome to the House of Rothschild assistant. Explore the website and collection, manage your orders, submit a Bitcoin transaction ID (TXID) for manual review, or apply for membership.\n\n🏛 Explore the website\n🛍 Browse the shop and manage your cart\n📦 Manage orders and submit a TXID\n🧾 Invoice after manual payment confirmation\n🤝 Apply for membership\n\nChoose an option below to continue. Payments are marked as confirmed only after manual verification.'+activeNote;
     await tg('sendMessage',{chat_id:msg.chat.id,text:welcome,reply_markup:welcomeKeyboard()});
   }
    else if(session.state.startsWith('membership_')){
