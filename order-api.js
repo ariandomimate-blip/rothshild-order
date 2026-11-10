@@ -39,9 +39,20 @@ const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
 async function init(){if(pool){await pool.query(orderTable);await pool.query('ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS customer_address text');await pool.query(`CREATE TABLE IF NOT EXISTS telegram_shop_sessions(chat_id text PRIMARY KEY,state text NOT NULL DEFAULT 'cart',cart jsonb NOT NULL DEFAULT '{}'::jsonb,customer_name text,customer_email text,pending_order text,application_data jsonb NOT NULL DEFAULT '{}'::jsonb,updated_at timestamptz NOT NULL DEFAULT now())`);await pool.query('ALTER TABLE telegram_shop_sessions ADD COLUMN IF NOT EXISTS customer_address text');await pool.query('ALTER TABLE telegram_shop_sessions ADD COLUMN IF NOT EXISTS application_data jsonb NOT NULL DEFAULT \'{}\'::jsonb');await pool.query(`CREATE TABLE IF NOT EXISTS membership_applications(id text PRIMARY KEY,telegram_chat_id text NOT NULL,full_name text NOT NULL,email text NOT NULL,address text NOT NULL,goals text NOT NULL,motivation text NOT NULL,status text NOT NULL DEFAULT 'pending',created_at timestamptz NOT NULL DEFAULT now())`);}}
 async function tg(method,payload){
  if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('TELEGRAM_BOT_TOKEN is not configured in the backend environment.');
- const r=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
- const data=await r.json().catch(()=>({}));
- if(!r.ok||data.ok!==true)throw new Error(data.description||'Telegram API failed');
+ let response,lastError;
+ for(let attempt=1;attempt<=3;attempt++){
+  try{
+   response=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
+   break;
+  }catch(error){
+   lastError=error;
+   console.error('Telegram network attempt '+attempt+' failed:',error.cause?.code||error.cause?.message||error.message);
+   if(attempt<3)await new Promise(resolve=>setTimeout(resolve,500*attempt));
+  }
+ }
+ if(!response)throw new Error('Telegram network request failed after 3 attempts: '+(lastError?.cause?.code||lastError?.message||'unknown error'));
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok||data.ok!==true)throw new Error(data.description||'Telegram API failed');
  return data.result;
 }
 const productKeyboard=()=>({inline_keyboard:[...catalog.map(p=>[{text:p.name+' · '+money(p.price),callback_data:'add:'+p.id}]),[{text:'🛒 Warenkorb',callback_data:'cart'}]]});
@@ -174,7 +185,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
    await tg('answerCallbackQuery',{callback_query_id:cb.id});
   }
   res.sendStatus(200);
- }catch(e){console.error('Telegram webhook error:',e.message);res.sendStatus(200);}
+ }catch(e){console.error('Telegram webhook error:',e.stack||e.message);res.sendStatus(500);}
 });
 app.post('/api/shop/orders',rateLimit({windowMs:60*60*1000,limit:8}),async(req,res)=>{
  try{
