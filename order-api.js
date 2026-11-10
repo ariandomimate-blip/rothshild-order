@@ -83,7 +83,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
   if(msg?.text){
    const chat=String(msg.chat.id),text=clean(msg.text,1000);
    let session=await getSession(chat);
-   if(text==='/start'||text==='/menu'){
+   if(/^\/(?:start|menu)(?:@\w+)?(?:\s|$)/i.test(text)){
     const activeNote=session.state.startsWith('membership_')
       ? '\n\n📝 Deine Mitgliedschaftsbewerbung ist noch offen. Nächste Angabe: '+(applicationPrompts[session.state]||'Bitte fahre fort.')
       : ['name','email','address','postal_city','confirm'].includes(session.state)
