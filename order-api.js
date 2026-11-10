@@ -80,6 +80,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
   if(secret&&req.get('x-telegram-bot-api-secret-token')!==secret)return res.sendStatus(403);
   const update=req.body||{};
   const msg=update.message,cb=update.callback_query;
+  console.log('Telegram update received:',msg?.text?.startsWith('/')?'command '+msg.text.split(/\\s/)[0]:cb?'callback '+String(cb.data||''):'other update');
   if(msg?.text){
    const chat=String(msg.chat.id),text=clean(msg.text,1000);
    let session=await getSession(chat);
@@ -239,5 +240,5 @@ async function configureTelegramWebhook(){
  const base=(process.env.RENDER_EXTERNAL_URL||process.env.TELEGRAM_WEBHOOK_BASE_URL||'').replace(/\/$/,'');
  if(!base)return console.warn('Telegram webhook not configured: set RENDER_EXTERNAL_URL or TELEGRAM_WEBHOOK_BASE_URL to this API service URL.');
  const url=base+'/api/telegram/webhook';
- try{const result=await tg('setWebhook',{url,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET||undefined,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook registration:',result===true?'success':'not confirmed');}catch(e){console.error('Telegram webhook registration failed:',e.message);}
+ try{const result=await tg('setWebhook',{url,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET||undefined,allowed_updates:['message','callback_query'],drop_pending_updates:false});console.log('Telegram webhook registration:',result===true?'success':'not confirmed');const me=await tg('getMe',{});console.log('Telegram bot identity:',me.username||me.first_name||'unknown');const commands=await tg('setMyCommands',{commands:[{command:'start',description:'Start the bot and open the welcome menu'},{command:'menu',description:'Open the shop menu'}]});console.log('Telegram commands configured:',commands===true);await tg('setMyDescription',{description:'Welcome to the House of Rothschild assistant. Browse the shop, manage orders, submit a TXID for manual review, or apply for membership. Send /start to begin.'});const info=await tg('getWebhookInfo',{});console.log('Telegram webhook status:',JSON.stringify({url:info.url,pending_update_count:info.pending_update_count,last_error_date:info.last_error_date,last_error_message:info.last_error_message}));}catch(e){console.error('Telegram webhook registration failed:',e.message);}
 }
