@@ -26,8 +26,8 @@ const catalog=[
  {id:'candle',name:'Amber Glass Candle',price:130}
 ];
 const memorySessions=new Map();
-const getSession=async chat=>{if(!pool)return memorySessions.get(String(chat))||{chat_id:String(chat),state:'cart',cart:{},customer_name:null,customer_email:null,pending_order:null,application_data:{}};const r=await pool.query('SELECT * FROM telegram_shop_sessions WHERE chat_id=$1',[chat]);return r.rows[0]||{chat_id:chat,state:'cart',cart:{},customer_name:null,customer_email:null,pending_order:null,application_data:{}};};
-const saveSession=s=>{if(!pool){memorySessions.set(String(s.chat_id),s);return Promise.resolve();}return pool.query(`INSERT INTO telegram_shop_sessions(chat_id,state,cart,customer_name,customer_email,pending_order,application_data,updated_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7::jsonb,now()) ON CONFLICT(chat_id) DO UPDATE SET state=EXCLUDED.state,cart=EXCLUDED.cart,customer_name=EXCLUDED.customer_name,customer_email=EXCLUDED.customer_email,pending_order=EXCLUDED.pending_order,application_data=EXCLUDED.application_data,updated_at=now()`,[s.chat_id,s.state,JSON.stringify(s.cart||{}),s.customer_name,s.customer_email,s.pending_order,JSON.stringify(s.application_data||{})]);};
+const getSession=async chat=>{if(!pool)return memorySessions.get(String(chat))||{chat_id:String(chat),state:'cart',cart:{},customer_name:null,customer_email:null,customer_address:null,pending_order:null,application_data:{}};const r=await pool.query('SELECT * FROM telegram_shop_sessions WHERE chat_id=$1',[chat]);return r.rows[0]||{chat_id:chat,state:'cart',cart:{},customer_name:null,customer_email:null,pending_order:null,application_data:{}};};
+const saveSession=s=>{if(!pool){memorySessions.set(String(s.chat_id),s);return Promise.resolve();}return pool.query(`INSERT INTO telegram_shop_sessions(chat_id,state,cart,customer_name,customer_email,customer_address,pending_order,application_data,updated_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7,$8::jsonb,now()) ON CONFLICT(chat_id) DO UPDATE SET state=EXCLUDED.state,cart=EXCLUDED.cart,customer_name=EXCLUDED.customer_name,customer_email=EXCLUDED.customer_email,customer_address=EXCLUDED.customer_address,pending_order=EXCLUDED.pending_order,application_data=EXCLUDED.application_data,updated_at=now()`,[s.chat_id,s.state,JSON.stringify(s.cart||{}),s.customer_name,s.customer_email,s.customer_address,s.pending_order,JSON.stringify(s.application_data||{})]);};
 const money=n=>'$'+Number(n).toFixed(2);
 const orderId=()=> 'RO-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+crypto.randomBytes(3).toString('hex').toUpperCase();
 const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
@@ -36,7 +36,7 @@ const orderTable=`CREATE TABLE IF NOT EXISTS shop_orders(
  txid text, status text NOT NULL DEFAULT 'awaiting_txid',
  created_at timestamptz NOT NULL DEFAULT now(), paid_at timestamptz
 )`;
-async function init(){if(pool){await pool.query(orderTable);await pool.query('ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS customer_address text');await pool.query(`CREATE TABLE IF NOT EXISTS telegram_shop_sessions(chat_id text PRIMARY KEY,state text NOT NULL DEFAULT 'cart',cart jsonb NOT NULL DEFAULT '{}'::jsonb,customer_name text,customer_email text,pending_order text,application_data jsonb NOT NULL DEFAULT '{}'::jsonb,updated_at timestamptz NOT NULL DEFAULT now())`);await pool.query('ALTER TABLE telegram_shop_sessions ADD COLUMN IF NOT EXISTS application_data jsonb NOT NULL DEFAULT \'{}\'::jsonb');await pool.query(`CREATE TABLE IF NOT EXISTS membership_applications(id text PRIMARY KEY,telegram_chat_id text NOT NULL,full_name text NOT NULL,email text NOT NULL,address text NOT NULL,goals text NOT NULL,motivation text NOT NULL,status text NOT NULL DEFAULT 'pending',created_at timestamptz NOT NULL DEFAULT now())`);}}
+async function init(){if(pool){await pool.query(orderTable);await pool.query('ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS customer_address text');await pool.query(`CREATE TABLE IF NOT EXISTS telegram_shop_sessions(chat_id text PRIMARY KEY,state text NOT NULL DEFAULT 'cart',cart jsonb NOT NULL DEFAULT '{}'::jsonb,customer_name text,customer_email text,pending_order text,application_data jsonb NOT NULL DEFAULT '{}'::jsonb,updated_at timestamptz NOT NULL DEFAULT now())`);await pool.query('ALTER TABLE telegram_shop_sessions ADD COLUMN IF NOT EXISTS customer_address text');await pool.query('ALTER TABLE telegram_shop_sessions ADD COLUMN IF NOT EXISTS application_data jsonb NOT NULL DEFAULT \'{}\'::jsonb');await pool.query(`CREATE TABLE IF NOT EXISTS membership_applications(id text PRIMARY KEY,telegram_chat_id text NOT NULL,full_name text NOT NULL,email text NOT NULL,address text NOT NULL,goals text NOT NULL,motivation text NOT NULL,status text NOT NULL DEFAULT 'pending',created_at timestamptz NOT NULL DEFAULT now())`);}}
 async function tg(method,payload){
  if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('TELEGRAM_BOT_TOKEN is not configured in the backend environment.');
  const r=await fetch('https://api.telegram.org/bot'+process.env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -111,14 +111,21 @@ app.post('/api/telegram/webhook',async(req,res)=>{
    }else if(session.state==='name'){
     if(text.length<2){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein.'});}
     else {session.customer_name=text;session.state='email';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
-   }else if(session.state==='email'||(session.state!=='name'&&session.state!=='txid'&&Boolean(session.customer_name)&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))){
+   }else if(session.state==='email'){(session.state!=='name'&&session.state!=='txid'&&Boolean(session.customer_name)&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))){
     const email=text==='-'?'':text.toLowerCase();
     if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){await tg('sendMessage',{chat_id:msg.chat.id,text:'Die E-Mail sieht ungültig aus. Bitte erneut eingeben oder „-“ senden.'});}
     else {
+     session.customer_email=email;session.state='address';await saveSession(session);
+     await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib deine vollständige Lieferanschrift mit Straße, Hausnummer, Postleitzahl und Ort ein.'});
+    }
+   }else if(session.state==='address'){
+    if(text.length<8||text.length>500){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib eine vollständige Lieferanschrift ein (8–500 Zeichen).'});}
+    else {
+     session.customer_address=text;
      const rows=cartRows(session.cart),total=rows.reduce((a,p)=>a+p.lineTotal,0),id=orderId();
-     const order={id,name:session.customer_name,email,chatId:chat,items:rows,total,status:'awaiting_txid'};
+     const order={id,name:session.customer_name,email:session.customer_email||'',address:session.customer_address,chatId:chat,items:rows,total,status:'awaiting_txid'};
      await saveOrder(order);
-     session.state='txid';session.pending_order=id;session.customer_email=email;await saveSession(session);
+     session.state='txid';session.pending_order=id;await saveSession(session);
      const btcAddress='12RFpbxvFpWSzk6H3Y4faNRTf9vTzfVKPF';
      const btcUri='bitcoin:'+btcAddress;
      const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=420x420&format=png&data='+encodeURIComponent(btcUri);
