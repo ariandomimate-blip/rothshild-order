@@ -140,7 +140,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
      const summary='🧾 BESTELLÜBERSICHT\n\nName: '+session.customer_name+'\nE-Mail: '+(session.customer_email||'nicht angegeben')+'\nStraße: '+session.customer_address+'\nPLZ / Ort: '+session.customer_postal_city+'\n\n'+rows.map(p=>p.name+' × '+p.quantity+' — '+money(p.lineTotal)).join('\n')+'\n\nGesamtbetrag: '+money(total)+'\n\nBitte prüfe deine Angaben und bestätige die Bestellung.';
      await tg('sendMessage',{chat_id:msg.chat.id,text:summary,reply_markup:{inline_keyboard:[[{text:'✅ Bestellung bestätigen',callback_data:'order:confirm'}],[{text:'✏️ Adresse ändern',callback_data:'order:edit'}],[{text:'🛒 Warenkorb anzeigen',callback_data:'cart'}]]}});
     }
-   }}else if(session.state==='txid'&&session.pending_order){
+   }else if(session.state==='txid'&&session.pending_order){
     const id=session.pending_order;
     if(text.length<8){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende eine vollständige TXID.'});}
     else {
@@ -156,7 +156,39 @@ app.post('/api/telegram/webhook',async(req,res)=>{
    const chat=String(cb.message.chat.id),data=String(cb.data||'');let session=await getSession(chat);
    if(data.startsWith('add:')){const p=catalog.find(p=>p.id===data.slice(4));if(p)session.cart[p.id]=Math.min(25,(session.cart[p.id]||0)+1);await saveSession(session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
    else if(data.startsWith('dec:')){const id=data.slice(4);session.cart[id]=Math.max(0,(session.cart[id]||0)-1);await saveSession(session);await tg('editMessageText',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,text:cartText(session.cart),reply_markup:cartKeyboard(session.cart)});}
-   else if(data==='order:confirm'){\n    if(session.state!=='confirm'||!cartRows(session.cart).length){await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Keine bestätigungsbereite Bestellung gefunden.'});}\n    else{\n     const rows=cartRows(session.cart),total=rows.reduce((a,p)=>a+p.lineTotal,0),id=orderId();\n     const order={id,name:session.customer_name,email:session.customer_email||'',address:session.customer_address,postalCity:session.customer_postal_city,chatId:chat,items:rows,total,status:'awaiting_txid'};\n     await saveOrder(order);session.state='txid';session.pending_order=id;await saveSession(session);\n     const btcAddress='12RFpbxvFpWSzk6H3Y4faNRTf9vTzfVKPF',qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=420x420&format=png&data='+encodeURIComponent('bitcoin:'+btcAddress);\n     await tg('sendMessage',{chat_id:cb.message.chat.id,text:'✅ Bestellung bestätigt\nBestellnummer: '+id+'\nGesamtbetrag: '+money(total)+'\nDie Bestellung wurde gespeichert. Die Bitcoin-Zahlungsdaten folgen jetzt.'});\n     await tg('sendPhoto',{chat_id:cb.message.chat.id,photo:qrUrl,caption:'₿ Bitcoin-Zahlung für Bestellung '+id+'\nGesamtbetrag: '+money(total)+'\n\nBitte ausschließlich das Bitcoin-Netzwerk verwenden. Den BTC-Betrag anhand des Bestellbetrags in deiner Wallet eingeben. Zahlung wird erst nach manueller Prüfung bestätigt.'});\n     await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitcoin-Zahlungsadresse (kopieren):\n'+btcAddress+'\n\nBestellung: '+id+'\nGesamtbetrag: '+money(total)+'\n\nNach der Überweisung sende die Bitcoin-Transaktions-ID (TXID) als nächste Nachricht. Sie wird an die Administration zur manuellen Prüfung weitergeleitet.',reply_markup:{inline_keyboard:[[{text:'📋 TXID übermitteln',callback_data:'txid:submit'}],[{text:'🧾 Bestellung / TXID',callback_data:'order:txid'}],[{text:'💬 Telegram-Support öffnen',url:supportDraftUrl('Hallo Rothshild Support, bitte prüft Bestellung '+id+'.') }]]}});\n     try{await adminOrder(order);}catch(adminError){console.error('Order admin notification failed:',adminError.message);}\n    }\n   }\n   else if(data==='order:edit'){session.state='address';await saveSession(session);await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitte gib Straße und Hausnummer erneut ein.'});}\n   else if(data==='order:txid'){
+   else if(data==='order:confirm'){
+    if(session.state!=='confirm'||!cartRows(session.cart).length){
+     await tg('answerCallbackQuery',{callback_query_id:cb.id,text:'Keine bestätigungsbereite Bestellung gefunden.'});
+    }else{
+     const rows=cartRows(session.cart),total=rows.reduce((sum,p)=>sum+p.lineTotal,0),id=orderId();
+     const order={id,name:session.customer_name,email:session.customer_email||'',address:session.customer_address,postalCity:session.customer_postal_city,chatId:chat,items:rows,total,status:'awaiting_txid'};
+     await saveOrder(order);
+     session.state='txid';session.pending_order=id;await saveSession(session);
+     const btcAddress='12RFpbxvFpWSzk6H3Y4faNRTf9vTzfVKPF';
+     const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=420x420&format=png&data='+encodeURIComponent('bitcoin:'+btcAddress);
+     await tg('sendMessage',{chat_id:cb.message.chat.id,text:`✅ Bestellung bestätigt
+Bestellnummer: ${id}
+Gesamtbetrag: ${money(total)}
+Die Bestellung wurde gespeichert. Die Bitcoin-Zahlungsdaten folgen jetzt.`});
+     await tg('sendPhoto',{chat_id:cb.message.chat.id,photo:qrUrl,caption:`₿ Bitcoin-Zahlung für Bestellung ${id}
+Gesamtbetrag: ${money(total)}
+
+Bitte ausschließlich das Bitcoin-Netzwerk verwenden. Den BTC-Betrag anhand des Bestellbetrags in deiner Wallet eingeben. Zahlung wird erst nach manueller Prüfung bestätigt.`});
+     await tg('sendMessage',{chat_id:cb.message.chat.id,text:`Bitcoin-Zahlungsadresse (kopieren):
+${btcAddress}
+
+Bestellung: ${id}
+Gesamtbetrag: ${money(total)}
+
+Nach der Überweisung sende die Bitcoin-Transaktions-ID (TXID) als nächste Nachricht. Sie wird an die Administration zur manuellen Prüfung weitergeleitet.`,reply_markup:{inline_keyboard:[[{text:'📋 TXID übermitteln',callback_data:'txid:submit'}],[{text:'🧾 Bestellung / TXID',callback_data:'order:txid'}],[{text:'💬 Telegram-Support öffnen',url:supportDraftUrl('Hallo Rothshild Support, bitte prüft Bestellung '+id+'.')}]]}});
+     try{await adminOrder(order);}catch(adminError){console.error('Order admin notification failed:',adminError.message);}
+    }
+   }
+   else if(data==='order:edit'){
+    session.state='address';await saveSession(session);
+    await tg('sendMessage',{chat_id:cb.message.chat.id,text:'Bitte gib Straße und Hausnummer erneut ein.'});
+   }
+   else if(data==='order:txid'){
     if(session.state==='txid'&&session.pending_order){
       await tg('sendMessage',{chat_id:cb.message.chat.id,text:'🧾 Offene Bestellung: '+session.pending_order+'\nBitte sende jetzt die vollständige Bitcoin-Transaktions-ID (TXID) als nächste Nachricht. Die Zahlung bleibt bis zur manuellen Prüfung offen.'});
     }else{
