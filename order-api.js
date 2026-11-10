@@ -111,7 +111,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
    }else if(session.state==='name'){
     if(text.length<2){await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte gib einen vollständigen Namen ein.'});}
     else {session.customer_name=text;session.state='email';await saveSession(session);await tg('sendMessage',{chat_id:msg.chat.id,text:'Bitte sende deine E-Mail-Adresse (oder „-“, falls du keine angeben möchtest).'});}
-   }else if(session.state==='email'){(session.state!=='name'&&session.state!=='txid'&&Boolean(session.customer_name)&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))){
+   }else if(session.state==='email'){
     const email=text==='-'?'':text.toLowerCase();
     if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){await tg('sendMessage',{chat_id:msg.chat.id,text:'Die E-Mail sieht ungültig aus. Bitte erneut eingeben oder „-“ senden.'});}
     else {
