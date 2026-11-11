@@ -118,3 +118,6 @@ BEGIN
     INSERT INTO app_schema_migrations(migration_key) VALUES ('profile_completion_v1');
   END IF;
 END $$;
+
+ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS request_topic TEXT NOT NULL DEFAULT '';
+ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS request_message TEXT NOT NULL DEFAULT '';
