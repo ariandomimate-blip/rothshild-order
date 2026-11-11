@@ -217,15 +217,16 @@ app.get('/api/mentors',auth,approved,async(req,res)=>{
 });
 app.post('/api/mentor-requests',auth,approved,rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
  try{
-  const mentor=clean(req.body?.mentorId,60);
+  const mentor=clean(req.body?.mentorId,60),topic=clean(req.body?.topic,140),message=clean(req.body?.message,2500);
   if(!mentor)return res.status(400).json({error:'Bitte wähle einen Mentor aus.'});
+  if(topic.length<3||message.length<10)return res.status(400).json({error:'Bitte gib ein Thema und eine Nachricht mit mindestens 10 Zeichen ein.'});
   const t=await q("SELECT id FROM users WHERE id=$1 AND status='approved' AND (role='mentor' OR lower(trim(display_name))='querox')",[mentor]);
   if(!t.rowCount)return res.status(404).json({error:'Dieser Mentor ist nicht verfügbar.'});
   if(mentor===req.user.id)return res.status(400).json({error:'Du kannst dich nicht selbst als Mentor auswählen.'});
   const existing=await q("SELECT id,status FROM mentor_assignments WHERE member_id=$1 AND mentor_id=$2",[req.user.id,mentor]);
   if(existing.rowCount&&existing.rows[0].status==='accepted')return res.status(409).json({error:'Dieser Mentor-Chat ist bereits aktiv.'});
-  const r=await q("INSERT INTO mentor_assignments(member_id,mentor_id,assigned_by,status,member_accepted_at,mentor_accepted_at) VALUES($1,$2,$1,'invited',now(),NULL) ON CONFLICT(member_id,mentor_id) DO UPDATE SET assigned_by=EXCLUDED.assigned_by,status='invited',member_accepted_at=now(),mentor_accepted_at=NULL RETURNING id",[req.user.id,mentor]);
-  res.status(201).json({assignmentId:r.rows[0].id,status:'invited',message:'Anfrage gesendet. Der Chat wird nach Zustimmung des Mentors aktiviert.'});
+  const r=await q("INSERT INTO mentor_assignments(member_id,mentor_id,assigned_by,status,member_accepted_at,mentor_accepted_at,request_topic,request_message) VALUES($1,$2,$1,'invited',now(),NULL,$3,$4) ON CONFLICT(member_id,mentor_id) DO UPDATE SET assigned_by=EXCLUDED.assigned_by,status='invited',member_accepted_at=now(),mentor_accepted_at=NULL,request_topic=EXCLUDED.request_topic,request_message=EXCLUDED.request_message RETURNING id",[req.user.id,mentor,topic,message]);
+  res.status(201).json({assignmentId:r.rows[0].id,status:'invited',message:'Deine Anfrage wurde an das Mitgliederkonto des Mentors gesendet.'});
  }catch(e){console.error('Mentor self-request failed:',e.message);res.status(500).json({error:'Mentor request could not be created.'});}
 });
 // Private mentor messaging. Messages are encrypted at rest with AES-256-GCM;
