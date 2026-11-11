@@ -357,7 +357,7 @@ app.post('/api/conversations/:id/messages',auth,approved,rateLimit({windowMs:60*
 // Public directory: only explicitly approved accounts are visible; never expose emails or password data.
 app.get('/api/profiles',auth,approved,async(req,res)=>{
  try{
-  const r=await q("SELECT id,display_name,bio,profile_rank,profile_title,avatar_data,cover_data FROM users WHERE status='approved' ORDER BY created_at DESC LIMIT 100");
+  const r=await q("SELECT id,display_name,CASE WHEN status='approved' THEN bio ELSE '' END AS bio,profile_rank,profile_title,CASE WHEN status='approved' THEN avatar_data ELSE NULL END AS avatar_data,status,role FROM users WHERE status IN ('approved','pending') ORDER BY CASE WHEN status='approved' THEN 0 ELSE 1 END,created_at DESC LIMIT 200");
   res.json({profiles:r.rows.map(p=>({...p,rank:p.profile_rank,title:p.profile_title}))});
  }catch(e){console.error('Public profile listing failed:',e.message);res.status(500).json({error:'Profile konnten nicht geladen werden.'});}
 });
