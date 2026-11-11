@@ -121,3 +121,26 @@ END $$;
 
 ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS request_topic TEXT NOT NULL DEFAULT '';
 ALTER TABLE mentor_assignments ADD COLUMN IF NOT EXISTS request_message TEXT NOT NULL DEFAULT '';
+
+
+-- Telegram-style member messenger: approved members only, independent of mentor assignments.
+CREATE TABLE IF NOT EXISTS member_conversations (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ title TEXT NOT NULL DEFAULT '',
+ created_by UUID NOT NULL REFERENCES users(id),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS member_conversation_members (
+ conversation_id UUID NOT NULL REFERENCES member_conversations(id) ON DELETE CASCADE,
+ user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(conversation_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS member_messages (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ conversation_id UUID NOT NULL REFERENCES member_conversations(id) ON DELETE CASCADE,
+ sender_id UUID NOT NULL REFERENCES users(id),
+ ciphertext TEXT NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS member_messages_conversation_created_idx ON member_messages(conversation_id,created_at DESC);
