@@ -108,3 +108,13 @@ JOIN mentor_assignments a ON a.id=c.assignment_id AND a.status='accepted'
 ON CONFLICT DO NOTHING;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed_at TIMESTAMPTZ;
+
+-- Existing accounts are treated as onboarded once; only accounts created after this migration see the first-time editor.
+CREATE TABLE IF NOT EXISTS app_schema_migrations (migration_key TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now());
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM app_schema_migrations WHERE migration_key='profile_completion_v1') THEN
+    UPDATE users SET profile_completed_at=COALESCE(created_at,now()) WHERE profile_completed_at IS NULL;
+    INSERT INTO app_schema_migrations(migration_key) VALUES ('profile_completion_v1');
+  END IF;
+END $$;
