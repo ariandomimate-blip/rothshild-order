@@ -233,6 +233,20 @@ app.post('/api/mentor-requests',auth,approved,rateLimit({windowMs:60*60*1000,lim
 // This is server-side encryption, NOT end-to-end encryption.
 app.get('/api/conversations',auth,approved,async(req,res)=>{
  try{
+  // Repair legacy accepted assignments that predate conversation creation.
+  // A chat is created only after BOTH participants have accepted the assignment.
+  await q(`INSERT INTO conversations(assignment_id)
+   SELECT a.id FROM mentor_assignments a
+   WHERE a.status='accepted' AND (a.member_id=$1 OR a.mentor_id=$1)
+   AND NOT EXISTS (SELECT 1 FROM conversations c WHERE c.assignment_id=a.id)`,[req.user.id]);
+  // Ensure both accepted participants are members of every accepted conversation.
+  await q(`INSERT INTO conversation_members(conversation_id,user_id)
+   SELECT c.id, participant.user_id
+   FROM conversations c
+   JOIN mentor_assignments a ON a.id=c.assignment_id AND a.status='accepted'
+   CROSS JOIN LATERAL (VALUES (a.member_id),(a.mentor_id)) AS participant(user_id)
+   WHERE (a.member_id=$1 OR a.mentor_id=$1)
+   ON CONFLICT DO NOTHING`,[req.user.id]);
   const r=await q(`SELECT c.id, other.display_name AS other_name, other.role AS other_role
    FROM conversations c
    JOIN mentor_assignments a ON a.id=c.assignment_id AND a.status='accepted'
