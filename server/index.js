@@ -95,8 +95,9 @@ app.post('/api/auth/register',async(req,res)=>{
 });
 app.post('/api/auth/login',async(req,res)=>{
  const email=clean(req.body.email,254).toLowerCase(), password=String(req.body.password||'');
- const r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE email=$1',[email]);
- if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({error:'Invalid sign-in details'});
+ let r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE lower(email)=lower($1)',[email]);
+ if(!r.rowCount){r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE lower(trim(display_name))=lower(trim($1)) ORDER BY created_at ASC LIMIT 2',[email]);}
+ if(r.rowCount!==1||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({error:'Invalid sign-in details'});
  let u=r.rows[0];const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();if(u.email.toLowerCase()===ownerEmail&&u.status!=='approved'){const updated=await q("UPDATE users SET status='approved' WHERE id=$1 RETURNING id,email,display_name,role,status",[u.id]);if(updated.rowCount)u=updated.rows[0];}res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
  res.json({token:tokenFor(u),user:{id:u.id,email:u.email,displayName:u.display_name,role:u.role,status:u.status}});
 });
