@@ -130,7 +130,7 @@ app.post('/api/forum/posts',auth,async(req,res)=>{
  const r=await q('INSERT INTO forum_posts(category_id,author_id,title,body) VALUES($1,$2,$3,$4) RETURNING id',[c.rows[0].id,req.user.id,title,body]);try{await notifyAdmins('Neuer Forumsbeitrag: '+title,`Member: ${req.user.display_name} (${req.user.email})\nBereich: ${slug}\nTitel: ${title}\n\n${body}` ,req.user.email)}catch(e){console.error('Forum notification mail failed:',e.message)}res.status(201).json({id:r.rows[0].id,notificationSent:true});
 });
 app.get('/api/library',auth,async(req,res)=>{const r=await q("SELECT id,title,topic,summary,body,source_note,visibility FROM library_items WHERE visibility='public' OR $1='approved' ORDER BY created_at DESC",[req.user.status]);res.json(r.rows);});
-app.get('/api/admin/users',auth,roles('admin','moderator'),async(req,res)=>{const r=await q('SELECT id,email,display_name,role,status,created_at FROM users ORDER BY created_at DESC LIMIT 300');res.json(r.rows);});
+app.get('/api/admin/users',auth,roles('admin','moderator'),async(req,res)=>{const r=await q("SELECT id,email,display_name,role,status,created_at FROM users WHERE email NOT LIKE '%@deleted.invalid' ORDER BY created_at DESC LIMIT 300");res.json(r.rows);});
 app.patch('/api/admin/users/:id',auth,roles('admin'),async(req,res)=>{
  const status=['pending','approved','rejected','suspended'].includes(req.body.status)?req.body.status:null;
  const role=['applicant','member','mentor','moderator','admin'].includes(req.body.role)?req.body.role:null;
