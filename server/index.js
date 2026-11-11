@@ -135,6 +135,8 @@ app.patch('/api/admin/users/:id',auth,roles('admin'),async(req,res)=>{
  const status=['pending','approved','rejected','suspended'].includes(req.body.status)?req.body.status:null;
  const role=['applicant','member','mentor','moderator','admin'].includes(req.body.role)?req.body.role:null;
  if(!status&&!role)return res.status(400).json({error:'Keine gültige Änderung'});
+ const target=await q('SELECT id,role,status FROM users WHERE id=$1',[req.params.id]);if(!target.rowCount)return res.status(404).json({error:'Mitglied nicht gefunden'});
+ if(target.rows[0].role==='admin'&&(status==='suspended'||status==='rejected'||(role&&role!=='admin'))){if(req.params.id===req.user.id)return res.status(400).json({error:'Du kannst deine eigene Administratorberechtigung nicht entfernen.'});const admins=await q("SELECT COUNT(*)::int AS count FROM users WHERE role='admin' AND status='approved'");if(admins.rows[0].count<=1)return res.status(409).json({error:'Der letzte freigegebene Administrator ist geschützt.'});}
  const r=await q('UPDATE users SET status=COALESCE($1,status),role=COALESCE($2,role) WHERE id=$3 RETURNING id,email,display_name,role,status',[status,role,req.params.id]);
  if(!r.rowCount)return res.status(404).json({error:'Mitglied nicht gefunden'});await q('INSERT INTO security_audit_log(actor_user_id,action,target_user_id,details) VALUES($1,$2,$3,$4::jsonb)',[req.user.id,'admin.user.updated',r.rows[0].id,JSON.stringify({status:status||undefined,role:role||undefined})]);res.json(r.rows[0]);
 });
