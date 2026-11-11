@@ -73,6 +73,56 @@ async function isConversationMember(id,userId){const r=await q('SELECT 1 FROM co
 
 async function notifyAdmins(subject,text,replyTo){if(!process.env.SMTP_HOST||!process.env.SMTP_USER||!process.env.SMTP_PASS||!process.env.SMTP_FROM)throw new Error('SMTP is not configured');const nodemailer=(await import('nodemailer')).default;const transporter=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});return transporter.sendMail({from:process.env.SMTP_FROM,to:'adiphenex@gmail.com',cc:'rothschildofficial938@gmail.com',replyTo,subject,text});}
 
+
+/* Approved-member messenger. Uses HTTPS in transit and AES-256-GCM encryption at rest.
+   This is server-side encryption, not end-to-end encryption. */
+app.get('/api/member-chats',auth,approved,async(req,res)=>{
+ try{
+  const r=await q(`SELECT c.id,c.title,c.created_at,
+   COALESCE(NULLIF(c.title,''),string_agg(DISTINCT u.display_name,', ')) AS chat_name,
+   (SELECT mm.created_at FROM member_messages mm WHERE mm.conversation_id=c.id ORDER BY mm.created_at DESC LIMIT 1) AS last_message_at,
+   (SELECT mm.ciphertext FROM member_messages mm WHERE mm.conversation_id=c.id ORDER BY mm.created_at DESC LIMIT 1) AS last_ciphertext
+   FROM member_conversations c
+   JOIN member_conversation_members mine ON mine.conversation_id=c.id AND mine.user_id=$1
+   JOIN member_conversation_members otherm ON otherm.conversation_id=c.id AND otherm.user_id<>$1
+   JOIN users u ON u.id=otherm.user_id AND u.status='approved'
+   GROUP BY c.id ORDER BY COALESCE((SELECT MAX(mm.created_at) FROM member_messages mm WHERE mm.conversation_id=c.id),c.created_at) DESC`,[req.user.id]);
+  res.json(r.rows.map(({last_ciphertext,...row})=>row));
+ }catch(e){console.error('Member chat list failed:',e.message);res.status(500).json({error:'Mitglieder-Chats konnten nicht geladen werden.'});}
+});
+app.post('/api/member-chats',auth,approved,rateLimit({windowMs:60*60*1000,limit:20}),async(req,res)=>{
+ try{
+  const ids=[...new Set((Array.isArray(req.body?.memberIds)?req.body.memberIds:[req.body?.memberId]).map(x=>clean(x,60)).filter(Boolean))].filter(x=>x!==req.user.id);
+  if(!ids.length||ids.length>19)return res.status(400).json({error:'Bitte mindestens ein anderes Mitglied auswählen (maximal 19).'});
+  const members=await q("SELECT id FROM users WHERE id=ANY($1::uuid[]) AND status='approved'",[ids]);
+  if(members.rowCount!==ids.length)return res.status(400).json({error:'Nur freigeschaltete Mitglieder können hinzugefügt werden.'});
+  const title=clean(req.body?.title,100);
+  const created=await q('INSERT INTO member_conversations(title,created_by) VALUES($1,$2) RETURNING id',[title,req.user.id]);
+  const cid=created.rows[0].id;
+  await q('INSERT INTO member_conversation_members(conversation_id,user_id) SELECT $1,x FROM unnest($2::uuid[]) x ON CONFLICT DO NOTHING',[cid,[req.user.id,...ids]]);
+  res.status(201).json({id:cid});
+ }catch(e){console.error('Member chat create failed:',e.message);res.status(500).json({error:'Chat konnte nicht erstellt werden.'});}
+});
+app.get('/api/member-chats/:id/messages',auth,approved,async(req,res)=>{
+ try{
+  const access=await q('SELECT 1 FROM member_conversation_members WHERE conversation_id=$1 AND user_id=$2',[req.params.id,req.user.id]);
+  if(!access.rowCount)return res.status(403).json({error:'Kein Zugriff auf diesen Chat.'});
+  const r=await q('SELECT id,sender_id,ciphertext,created_at FROM member_messages WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id]);
+  res.json(r.rows.reverse().map(m=>({id:m.id,senderId:m.sender_id,text:decryptMessage(m.ciphertext),createdAt:m.created_at})));
+ }catch(e){console.error('Member messages read failed:',e.message);res.status(503).json({error:'Nachrichten nicht verfügbar. Prüfe MESSAGE_ENCRYPTION_KEY in Render.'});}
+});
+app.post('/api/member-chats/:id/messages',auth,approved,rateLimit({windowMs:60*60*1000,limit:120}),async(req,res)=>{
+ try{
+  const access=await q('SELECT 1 FROM member_conversation_members WHERE conversation_id=$1 AND user_id=$2',[req.params.id,req.user.id]);
+  if(!access.rowCount)return res.status(403).json({error:'Kein Zugriff auf diesen Chat.'});
+  const text=clean(req.body?.text,4000);
+  if(!text)return res.status(400).json({error:'Bitte eine Nachricht eingeben.'});
+  const ciphertext=encryptMessage(text);
+  const r=await q('INSERT INTO member_messages(conversation_id,sender_id,ciphertext) VALUES($1,$2,$3) RETURNING id,created_at',[req.params.id,req.user.id,ciphertext]);
+  res.status(201).json({id:r.rows[0].id,senderId:req.user.id,text,createdAt:r.rows[0].created_at});
+ }catch(e){console.error('Member message send failed:',e.message);res.status(503).json({error:'Nachricht konnte nicht verschlüsselt gespeichert werden. Prüfe MESSAGE_ENCRYPTION_KEY in Render.'});}
+});
+
 app.get('/api/health',(req,res)=>res.json({ok:true}));
 app.post('/api/applications',rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false}),async(req,res)=>{
  const fullName=clean(req.body?.fullName,120),email=clean(req.body?.email,254).toLowerCase(),address=clean(req.body?.address,300),goals=clean(req.body?.goals,4000),motivation=clean(req.body?.motivation,4000);
