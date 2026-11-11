@@ -61,7 +61,7 @@ const q=(s,v=[])=>pool.query(s,v);
 const cookieOpts={httpOnly:true,secure:prod || process.env.COOKIE_SECURE==='true',sameSite:prod?'none':'strict',path:'/'};
 function tokenFor(u){return jwt.sign({sub:u.id,role:u.role,status:u.status},process.env.JWT_SECRET,{expiresIn:'2h',issuer:'rothshild-platform'});}
 async function auth(req,res,next){
- try{const header=req.get('authorization')||'';const bearer=header.startsWith('Bearer ')?header.slice(7):'';const t=bearer||req.cookies.session;if(!t)return res.status(401).json({error:'Sign-in required'});const p=jwt.verify(t,process.env.JWT_SECRET,{issuer:'rothshild-platform'});const r=await q('SELECT id,email,display_name,role,status FROM users WHERE id=$1',[p.sub]);if(!r.rowCount)return res.status(401).json({error:'Konto nicht gefunden'});req.user=r.rows[0];next();}catch{return res.status(401).json({error:'Sitzung ungültig oder abgelaufen'});}
+ try{const header=req.get('authorization')||'';const bearer=header.startsWith('Bearer ')?header.slice(7):'';const t=bearer||req.cookies.session;if(!t)return res.status(401).json({error:'Sign-in required'});const p=jwt.verify(t,process.env.JWT_SECRET,{issuer:'rothshild-platform'});const r=await q('SELECT id,email,display_name,role,status FROM users WHERE id=$1',[p.sub]);if(!r.rowCount)return res.status(401).json({error:'Konto nicht gefunden'});if(['suspended','rejected'].includes(r.rows[0].status))return res.status(403).json({error:'Dieses Konto ist gesperrt oder deaktiviert.'});req.user=r.rows[0];next();}catch{return res.status(401).json({error:'Sitzung ungültig oder abgelaufen'});}
 }
 const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user.role)?next():res.status(403).json({error:'Permission denied'});
 const approved=(req,res,next)=>req.user.status==='approved'?next():res.status(403).json({error:'Membership has not yet been approved'});
@@ -98,7 +98,7 @@ app.post('/api/auth/login',async(req,res)=>{
  let r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE lower(email)=lower($1)',[email]);
  if(!r.rowCount){r=await q('SELECT id,email,display_name,password_hash,role,status FROM users WHERE lower(trim(display_name))=lower(trim($1)) ORDER BY created_at ASC LIMIT 2',[email]);}
  if(r.rowCount!==1||!(await bcrypt.compare(password,r.rows[0].password_hash)))return res.status(401).json({error:'Invalid sign-in details'});
- let u=r.rows[0];const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();if(u.email.toLowerCase()===ownerEmail&&(u.status!=='approved'||u.role!=='admin')){const updated=await q("UPDATE users SET role='admin',status='approved' WHERE id=$1 RETURNING id,email,display_name,role,status",[u.id]);if(updated.rowCount)u=updated.rows[0];}res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
+ let u=r.rows[0];if(['suspended','rejected'].includes(u.status))return res.status(403).json({error:'Dieses Konto ist gesperrt oder deaktiviert.'});const ownerEmail=(process.env.SITE_OWNER_EMAIL||'gaussa72@gmail.com').toLowerCase();if(u.email.toLowerCase()===ownerEmail&&(u.status!=='approved'||u.role!=='admin')){const updated=await q("UPDATE users SET role='admin',status='approved' WHERE id=$1 RETURNING id,email,display_name,role,status",[u.id]);if(updated.rowCount)u=updated.rows[0];}res.cookie('session',tokenFor(u),{...cookieOpts,maxAge:2*60*60*1000});
  res.json({token:tokenFor(u),user:{id:u.id,email:u.email,displayName:u.display_name,role:u.role,status:u.status}});
 });
 
@@ -137,6 +137,22 @@ app.patch('/api/admin/users/:id',auth,roles('admin'),async(req,res)=>{
  if(!status&&!role)return res.status(400).json({error:'Keine gültige Änderung'});
  const r=await q('UPDATE users SET status=COALESCE($1,status),role=COALESCE($2,role) WHERE id=$3 RETURNING id,email,display_name,role,status',[status,role,req.params.id]);
  if(!r.rowCount)return res.status(404).json({error:'Mitglied nicht gefunden'});await q('INSERT INTO security_audit_log(actor_user_id,action,target_user_id,details) VALUES($1,$2,$3,$4::jsonb)',[req.user.id,'admin.user.updated',r.rows[0].id,JSON.stringify({status:status||undefined,role:role||undefined})]);res.json(r.rows[0]);
+});
+app.delete('/api/admin/users/:id',auth,roles('admin'),async(req,res)=>{
+ try{
+  if(req.params.id===req.user.id)return res.status(400).json({error:'Du kannst dein eigenes Konto nicht löschen.'});
+  const target=await q('SELECT id,role,status FROM users WHERE id=$1',[req.params.id]);
+  if(!target.rowCount)return res.status(404).json({error:'Konto nicht gefunden.'});
+  if(target.rows[0].role==='admin'){
+   const admins=await q("SELECT COUNT(*)::int AS count FROM users WHERE role='admin' AND status='approved'");
+   if(admins.rows[0].count<=1)return res.status(409).json({error:'Der letzte freigegebene Administrator kann nicht gelöscht werden.'});
+  }
+  const replacementEmail='deleted-'+randomBytes(16).toString('hex')+'@deleted.invalid';
+  const replacementHash=await bcrypt.hash(randomBytes(32).toString('hex'),12);
+  const r=await q("UPDATE users SET email=$1,display_name='Gelöschtes Konto',password_hash=$2,role='applicant',status='rejected',bio='',interests='',profile_rank='',profile_title='',avatar_data=NULL,cover_data=NULL WHERE id=$3 RETURNING id",[replacementEmail,replacementHash,req.params.id]);
+  await q('INSERT INTO security_audit_log(actor_user_id,action,target_user_id,details) VALUES($1,$2,$3,$4::jsonb)',[req.user.id,'admin.user.deleted',req.params.id,JSON.stringify({contentPreserved:true,deletedAt:new Date().toISOString()})]);
+  res.json({ok:true,message:'Konto deaktiviert und anonymisiert. Beiträge und Kommentare bleiben erhalten.'});
+ }catch(e){console.error('Admin account deletion failed:',e.message);res.status(500).json({error:'Konto konnte nicht gelöscht werden.'});}
 });
 app.get('/api/admin/mentor-assignments',auth,roles('admin','moderator'),async(req,res)=>{
  try{
