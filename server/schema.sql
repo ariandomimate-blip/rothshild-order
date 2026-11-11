@@ -106,3 +106,5 @@ FROM conversation_members cm
 JOIN conversations c ON c.id=cm.conversation_id
 JOIN mentor_assignments a ON a.id=c.assignment_id AND a.status='accepted'
 ON CONFLICT DO NOTHING;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed_at TIMESTAMPTZ;
