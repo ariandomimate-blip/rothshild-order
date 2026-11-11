@@ -20,17 +20,27 @@ async function loadPosts(){try{const posts=await api('/profile/posts');$('#timel
 function postMarkup(p){const name=esc(p.display_name||user?.displayName||'Member'),pic=p.avatar_data?'<img alt="" src="'+esc(p.avatar_data)+'">':'♜';return '<article class="panel social-post"><div class="post-author"><div class="mini-avatar">'+pic+'</div><div><b>'+name+'</b><small>'+new Date(p.created_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})+'</small></div><button class="post-delete" type="button" data-delete="'+esc(p.id)+'" aria-label="Delete post">⋯</button></div><p class="post-body">'+esc(p.body).replace(/\n/g,'<br>')+'</p><div class="post-footer"><span>♧ Community post</span><span>Nur du kannst diesen Delete post</span></div></article>'}
 $('#postComposer').onsubmit=async e=>{e.preventDefault();const body=new FormData(e.target).get('body'),out=$('#postMsg');out.textContent='Publishing …';try{await api('/profile/posts',{method:'POST',body:JSON.stringify({body})});e.target.reset();out.textContent='Post published.';await loadPosts()}catch(x){out.textContent=x.message}};
 const mentorForm=$('#mentorRequest');
-const mentorEmailLink=$('#mentorEmailLink'),mentorTelegramLink=$('#mentorTelegramLink');
+const mentorEmailLink=$('#mentorEmailLink'),mentorTelegramLink=$('#mentorTelegramLink'),profileMentorSelect=$('#profileMentorSelect');
+async function loadProfileMentors(){
+ try{
+  const rows=await api('/mentors');profileMentorSelect.replaceChildren();
+  const first=document.createElement('option');first.value='';first.textContent='Bitte Mentor auswählen';profileMentorSelect.append(first);
+  rows.forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.display_name+(m.title?' · '+m.title:'');profileMentorSelect.append(o)});
+  if(!rows.length){first.textContent='Keine Mentoren verfügbar';profileMentorSelect.disabled=true}
+ }catch(e){profileMentorSelect.replaceChildren();const o=document.createElement('option');o.value='';o.textContent='Mentoren konnten nicht geladen werden';profileMentorSelect.append(o)}
+}
+loadProfileMentors();
+
 function updateMentorHandoff(){
- const f=new FormData(mentorForm),topic=String(f.get('topic')||'').trim(),message=String(f.get('message')||'').trim();
+ const f=new FormData(mentorForm),topic=String(f.get('topic')||'').trim(),message=String(f.get('message')||'').trim(),mentorId=String(f.get('mentorId')||'').trim();
  const emailTo='rothschildofficial938@gmail.com',subject='Mentor request – '+topic;
  const body='Mentor request via the ROTHSHILD community\n\nTopic: '+topic+'\n\nMessage:\n'+message+'\n\nPlease reply directly to this email.';
  mentorEmailLink.href='mailto:'+emailTo+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
  const telegramText='Mentor request for @Rothshild_Adriano\nTopic: '+topic+'\nMessage: '+message;
  mentorTelegramLink.href='https://t.me/Rothshild_Adriano?text='+encodeURIComponent(telegramText);
 }
-mentorForm.addEventListener('input',updateMentorHandoff);updateMentorHandoff();
-mentorForm.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(mentorForm),out=$('#mentorMsg'),topic=String(f.get('topic')||'').trim(),message=String(f.get('message')||'').trim();const emailTo='rothschildofficial938@gmail.com',subject='Mentor request – '+topic,body='Mentor request via the ROTHSHILD community\n\nTopic: '+topic+'\n\nMessage:\n'+message+'\n\nPlease reply directly to this email.';const mailto='mailto:'+emailTo+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);try{const r=await fetch(API_ORIGIN+'/api/mentor/request',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,message})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request could not be submitted.');out.textContent=d.message||'Mentor request submitted.';mentorForm.reset();updateMentorHandoff()}catch{out.textContent='Automatic sending is unavailable. ';const link=document.createElement('a');link.href=mailto;link.textContent='Open pre-filled email to support';out.append(link)}});
+mentorForm.addEventListener('input',updateMentorHandoff);mentorForm.addEventListener('change',updateMentorHandoff);updateMentorHandoff();
+mentorForm.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(mentorForm),out=$('#mentorMsg'),topic=String(f.get('topic')||'').trim(),message=String(f.get('message')||'').trim(),mentorId=String(f.get('mentorId')||'').trim(),button=mentorForm.querySelector('button[type="submit"]');if(!mentorId){out.textContent='Bitte wähle zuerst einen Mentor aus.';return}button.disabled=true;out.textContent='Anfrage wird an das Mitgliederkonto des Mentors gesendet …';try{const d=await api('/mentor-requests',{method:'POST',body:JSON.stringify({mentorId,topic,message})});out.textContent=d.message||'Mentoranfrage wurde gesendet.';mentorForm.reset();updateMentorHandoff()}catch(err){out.textContent=err.message}finally{button.disabled=false}});
 
 $('#profileLoginForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target),msg=$('#profileLoginMsg');msg.textContent='Anmeldung wird geprüft …';const button=e.target.querySelector('button[type="submit"]');button.disabled=true;try{const r=await fetch(API_ORIGIN+'/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.get('email'),password:f.get('password')})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Anmeldung fehlgeschlagen.');if(!d.token)throw Error('Anmeldung ohne Sitzungstoken. Bitte erneut versuchen.');sessionStorage.setItem('rothshild_session_token',d.token);msg.textContent='Angemeldet. Profil wird geöffnet …';await load();}catch(err){msg.textContent=err.message;}finally{button.disabled=false;}});
 load();
