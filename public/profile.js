@@ -24,9 +24,9 @@ const mentorEmailLink=$('#mentorEmailLink'),mentorTelegramLink=$('#mentorTelegra
 function updateMentorHandoff(){
  const f=new FormData(mentorForm),topic=String(f.get('topic')||'').trim(),message=String(f.get('message')||'').trim();
  const emailTo='rothschildofficial938@gmail.com',subject='Mentor request – '+topic;
- const body='Mentor request via the ROTHSHILD community\\n\\nTopic: '+topic+'\\n\\nMessage:\\n'+message+'\\n\\nPlease reply directly to this email.';
+ const body='Mentor request via the ROTHSHILD community\n\nTopic: '+topic+'\n\nMessage:\n'+message+'\n\nPlease reply directly to this email.';
  mentorEmailLink.href='mailto:'+emailTo+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
- const telegramText='Mentor request for @Rothshild_Adriano\\nTopic: '+topic+'\\nMessage: '+message;
+ const telegramText='Mentor request for @Rothshild_Adriano\nTopic: '+topic+'\nMessage: '+message;
  mentorTelegramLink.href='https://t.me/Rothshild_Adriano?text='+encodeURIComponent(telegramText);
 }
 mentorForm.addEventListener('input',updateMentorHandoff);updateMentorHandoff();
