@@ -95,3 +95,16 @@ input:focus,textarea:focus,select:focus,button:focus-visible,a:focus-visible{out
 img{max-width:100%;height:auto}
 @media(max-width:760px){.messenger-layout{grid-template-columns:1fr!important}.messenger-messages{height:48vh!important}.container,.content,.main{max-width:100%;padding-left:14px!important;padding-right:14px!important}header,nav{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+
+/* ULTIMA visual quality layer — preserves Order of Light branding and commerce logic */
+:root{--ultima-focus:#f0d79a;--ultima-surface:rgba(20,18,15,.82);--ultima-edge:rgba(219,190,130,.2);--ultima-gold:#d8bd83}
+body{font-feature-settings:"ss01" on;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+section,.card,.panel,.product-card,.forum-card,.profile-card{border-color:var(--ultima-edge)}
+button,.button,a.button{min-height:42px}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ultima-focus)!important;outline-offset:3px}
+img{height:auto}
+@media(min-width:1200px){main,.container,.content{max-width:1440px;margin-inline:auto}}
+@media(max-width:760px){.hero{padding:clamp(26px,7vw,60px) 18px!important}.hero h1{font-size:clamp(34px,10vw,62px)!important;line-height:1.02}.grid,.products,.product-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px}.messenger-layout{min-width:0}.messenger-messages{min-height:280px}}
+@media(max-width:420px){.grid,.products,.product-grid{grid-template-columns:1fr!important}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
