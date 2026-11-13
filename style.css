@@ -84,3 +84,14 @@ footer{padding:38px 20px;background:#080706;border-top:1px solid var(--line);dis
 /* Keep both homepage membership actions visible on mobile and desktop. */
 .hero a.membership-application-button{display:block!important;visibility:visible!important;opacity:1!important;position:relative;z-index:2;min-width:min(380px,100%);margin:12px auto 0!important;}
 .hero a.gold[href='/profil.html']{display:block;min-width:min(380px,100%);}
+
+/* Ultima 2026 — design-only responsive layer; checkout and account logic untouched */
+:root{--ultima-line:rgba(255,255,255,.15);--ultima-focus:#e7cf94}
+html{scroll-behavior:smooth}body{overflow-x:hidden!important}
+button,a{transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+button:hover{transform:translateY(-1px)}
+input,textarea,select{max-width:100%;outline:none}
+input:focus,textarea:focus,select:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--ultima-focus)!important;outline-offset:3px}
+img{max-width:100%;height:auto}
+@media(max-width:760px){.messenger-layout{grid-template-columns:1fr!important}.messenger-messages{height:48vh!important}.container,.content,.main{max-width:100%;padding-left:14px!important;padding-right:14px!important}header,nav{flex-wrap:wrap}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
